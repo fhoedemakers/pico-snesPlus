@@ -261,16 +261,16 @@ endforeach()
 # loop unrolling, and IPA cloning, which pay off heavily on branch-heavy
 # dispatch tables and per-pixel rasterizers. Code-size growth (~10-20 %)
 # is absorbed by SRAM headroom.
-set(SNES9X_O3_FILES
-    cpuops.c    # 65816 dispatch
-    spc700.c    # APUExecute
-    ppu.c       # S9xSetPPU
-    tile.c      # DrawTile / DrawClippedTile
-)
-foreach(_src IN LISTS SNES9X_O3_FILES)
-    set_property(SOURCE snes9x/src/${_src} APPEND_STRING PROPERTY
-        COMPILE_FLAGS " -O3")
-endforeach()
+# set(SNES9X_O3_FILES
+#     cpuops.c    # 65816 dispatch
+#     spc700.c    # APUExecute
+#     ppu.c       # S9xSetPPU
+#     tile.c      # DrawTile / DrawClippedTile
+# )
+# foreach(_src IN LISTS SNES9X_O3_FILES)
+#     set_property(SOURCE snes9x/src/${_src} APPEND_STRING PROPERTY
+#         COMPILE_FLAGS " -O3")
+# endforeach()
 
 if(BUILD_FOR_BOOTLOADER)
     include("pico_shared/BootPartition.cmake")
