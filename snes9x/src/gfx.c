@@ -160,10 +160,20 @@ void DrawLargePixel16Sub1_2(uint32_t Tile, int32_t Offset, uint32_t StartPixel, 
 bool S9xInitGFX(void)
 {
    /* Pico port: LocalState is ~22 KB of scanline/sprite scratch
-    * (LineData[240] + LineMatrixData[240] + OBJLines[239]). Per-scanline
-    * access, ~14400 lookups/sec — PSRAM handles it. SRAM is too tight
-    * after WRAM (128 KB), Map/MapInfo (~20 KB), IAPU.RAM (64 KB) etc. */
-   LocalState = port_alloc_psram(sizeof(*LocalState));
+    * (LineData[240] + LineMatrixData[240] + OBJLines[239]). OBJLines is
+    * walked per scanline even on frameskipped frames (S9xSetupOBJ /
+    * RTOFlags), LineData written per scanline on rendered frames — SRAM
+    * if the heap can afford it, PSRAM otherwise. port_alloc_free()
+    * discriminates by address, so the fallback needs no bookkeeping. */
+   LocalState = port_alloc_sram(sizeof(*LocalState));
+   if (LocalState)
+      printf("GFX LocalState (%u B) in SRAM\n", (unsigned)sizeof(*LocalState));
+   else
+   {
+      LocalState = port_alloc_psram(sizeof(*LocalState));
+      printf("GFX LocalState (%u B) in PSRAM (SRAM heap full)\n",
+             (unsigned)sizeof(*LocalState));
+   }
    if (!LocalState)
       return false;
    memset(LocalState, 0, sizeof(*LocalState));

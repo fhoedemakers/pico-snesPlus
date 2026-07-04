@@ -77,3 +77,26 @@ extern "C" bool JustifierOffscreen(void)                                       {
 extern "C" void JustifierButtons(uint32_t *)                                   { }
 extern "C" void S9xToggleSoundChannel(int32_t)                                 { }
 /* S9xNextController is defined by snes9x's own ppu.c. */
+
+#if MIX_ON_CORE1
+/* Cross-core sound-state lock — see the comment at S9xSetAPUDSP (apu.c).
+ * spin_lock_unsafe: neither holder takes it from an IRQ, so no irq-save
+ * variant is needed. Held ~µs on core0 (one DSP register write) and up
+ * to ~200 µs on core1 (one 64-sample mix chunk). */
+#include "pico/sync.h"
+static spin_lock_t *snd_lock;
+
+extern "C" void port_sound_lock_init(void)
+{
+    if (!snd_lock)
+        snd_lock = spin_lock_instance(spin_lock_claim_unused(true));
+}
+extern "C" void __not_in_flash_func(port_sound_lock)(void)
+{
+    spin_lock_unsafe_blocking(snd_lock);
+}
+extern "C" void __not_in_flash_func(port_sound_unlock)(void)
+{
+    spin_unlock_unsafe(snd_lock);
+}
+#endif

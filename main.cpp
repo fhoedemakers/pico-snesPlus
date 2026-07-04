@@ -52,12 +52,14 @@ extern uint16_t *g_snes_private_screen;
 
 #define EMULATOR_CLOCKFREQ_KHZ 378000   /* RP2350 overclock — 378 MHz */
 #define AUDIOBUFFERSIZE 1024
-/* Dropped from 44100 to 32000 to cut SPC700 sample-synthesis work by
- * ~27%. 32 kHz is in the HDMI ACR lookup table (N=4096, CTS=25200) so
- * the HDMI receiver still clock-recovers correctly. We also have to
- * re-call pico_hdmi_set_audio_sample_rate() after Frens::initAll
- * because hstx_init() in pico_shared hardcodes 44100. */
-#define SNES_AUDIO_HZ 32000
+/* 44100, matching everything downstream: the TLV320 DAC's register
+ * script is written for 44.1 kHz (its BCLK-fed PLL runs below spec at
+ * 32 kHz), the I2S setup in Frens::initAll uses the 44100 default, and
+ * hstx_init's HDMI ACR default is 44100 too. An earlier 32000 setting
+ * (to cut SPC700 sample-synthesis cost on core0) became pointless once
+ * S9xMixSamples moved to core1 (MIX_ON_CORE1) — the synthesis cost now
+ * lands on core1's idle time. */
+#define SNES_AUDIO_HZ 44100
 
 bool isFatalError = false;
 char *romName = nullptr;
@@ -126,8 +128,197 @@ static int audio_free_samples(void)
 
 static int16_t mix_buf[512];  /* up to 256 stereo frames per pump call */
 
+#if HSTX && BLIT_ON_CORE1
+/* -------------------------------------------------------------------------
+ * Off-load the GFX.Screen (PSRAM) → HSTX framebuffer (SRAM) blit to core1.
+ * core1's video work all happens in dma_irq_handler; its thread context
+ * (video_output_core1_run) is an idle watchdog loop with a background-task
+ * hook, so the ~2.5 ms blit runs there for free while core0 emulates the
+ * next (frameskipped) SNES frame.
+ *
+ * Safety: GFX.Screen is only written by S9xMainLoop on rendered frames.
+ * Core0 submits the job right after a rendered frame and never touches
+ * GFX.Screen until the next rendered frame, so the only sync needed is
+ * "wait for pending==0 before starting a rendered S9xMainLoop" (and before
+ * the menu repaints the framebuffer). With frameskip on, the blit has two
+ * whole skip-frames (~33 ms) to finish; the wait never actually spins. */
+static struct {
+    const uint16_t *src;
+    uint16_t       *dst;
+    int             rows;
+    volatile bool   pending;
+} blit_job;
+
+static void __not_in_flash_func(core1_blit_task)(void)
+{
+    if (!blit_job.pending) return;
+    __dmb();  /* order: job fields were written before pending was set */
+    const uint16_t * __restrict src = blit_job.src;
+    uint16_t       * __restrict dst = blit_job.dst;
+    for (int y = 0; y < blit_job.rows; y++) {
+        memcpy(dst, src, SNES_WIDTH * sizeof(uint16_t));
+        src += SNES_WIDTH;
+        dst += 320;
+    }
+    __dmb();
+    blit_job.pending = false;
+}
+
+static inline void blit_wait_done(void)
+{
+    while (blit_job.pending) tight_loop_contents();
+    __dmb();
+}
+
+static inline void blit_submit(const uint16_t *src, uint16_t *dst, int rows)
+{
+    blit_job.src  = src;
+    blit_job.dst  = dst;
+    blit_job.rows = rows;
+    __dmb();
+    blit_job.pending = true;
+}
+#endif
+
+#if HSTX && MIX_ON_CORE1
+/* -------------------------------------------------------------------------
+ * Audio mixing + HDMI data-island encode on core1. Two wins:
+ *   - core0 gets ~850 us/frame back (the entire pump_audio cost);
+ *   - the DI queue is topped up continuously instead of once per frame
+ *     capped at 256 samples — which could never keep up with the 533
+ *     samples/frame the scan-out consumes at 32 kHz, so audio was
+ *     chronically interleaved with silence-fallback packets.
+ * Exclusion vs the SPC700's DSP writes (core0): port_sound_lock, taken
+ * per 64-sample chunk here and around S9xSetAPUDSP there. The park
+ * protocol makes the mixer quiescent for the menu (whose wavplayer is
+ * the other DI-queue producer) and during sound init/teardown. */
+extern "C" {
+    void port_sound_lock_init(void);
+    void port_sound_lock(void);
+    void port_sound_unlock(void);
+}
+#if PROFILE_BUCKETS
+extern "C" bool g_prof_bypass_apu;   /* defined in the PROFILE block below */
+#endif
+
+static volatile bool mix_c1_enable = false;
+static volatile bool mix_c1_parked = true;
+static int16_t mix_buf_c1[128];   /* one 64-stereo-frame chunk */
+
+static void __not_in_flash_func(core1_mix_task)(void)
+{
+    if (!mix_c1_enable) {
+        mix_c1_parked = true;
+        return;
+    }
+    mix_c1_parked = false;
+    if (!settings.flags.audioEnabled) return;
+#if PROFILE_BUCKETS
+    if (g_prof_bypass_apu) return;
+#endif
+
+    int free_slots = audio_free_samples();
+    while (free_slots > 0 && mix_c1_enable) {
+        int n = free_slots > 64 ? 64 : free_slots;
+        port_sound_lock();
+        S9xMixSamples(mix_buf_c1, n * 2);
+        port_sound_unlock();
+#if EXT_AUDIO_IS_ENABLED
+        if (settings.flags.useExtAudio) {
+            for (int i = 0; i < n; i++) {
+                EXT_AUDIO_ENQUEUE_SAMPLE(mix_buf_c1[i*2], mix_buf_c1[i*2+1]);
+            }
+        } else
+#endif
+        {
+            for (int i = 0; i < n; i++) {
+                hstx_push_audio_sample(mix_buf_c1[i*2], mix_buf_c1[i*2+1]);
+            }
+        }
+        free_slots -= n;
+    }
+}
+
+static void mix_c1_park(void)
+{
+    mix_c1_enable = false;
+    while (!mix_c1_parked) tight_loop_contents();
+    __dmb();
+}
+
+static inline void mix_c1_resume(void)
+{
+    __dmb();
+    mix_c1_enable = true;
+}
+#endif
+
+#if HSTX && (BLIT_ON_CORE1 || MIX_ON_CORE1)
+/* Single background task for core1's idle loop. Blit first — it has a
+ * (soft) deadline against the next rendered frame; audio has ~25 ms of
+ * queue headroom. */
+static void __not_in_flash_func(core1_background_task)(void)
+{
+#if BLIT_ON_CORE1
+    core1_blit_task();
+#endif
+#if MIX_ON_CORE1
+    core1_mix_task();
+#endif
+}
+#endif
+
+#if PROFILE_BUCKETS
+/* Frame-time accumulators, us. Reset once per second alongside the fps
+ * printf. All updates happen on core0 in run_emulator() so no locking.
+ * main is split by rendered vs skipped so we can see render cost
+ * separately from CPU+APU cost. */
+static uint32_t prof_us_host_tick;
+static uint32_t prof_us_main_r;      /* S9xMainLoop on rendered frames */
+static uint32_t prof_us_main_s;      /* S9xMainLoop on skipped frames  */
+static uint32_t prof_frames_r;
+static uint32_t prof_frames_s;
+static uint32_t prof_us_blit;
+static uint32_t prof_us_pump;
+static uint32_t prof_us_pace;
+
+/* Phase 0 A/B toggles. Cycles every ~5 s through a 4-state pattern so a
+ * single UART capture gives all combinations. When bypass_apu is on we
+ * toggle BOTH IAPU.APUExecuting and Settings.APUEnabled — the latter is
+ * necessary because dma.c:381 and apu.c:71/104/136 re-derive APUExecuting
+ * from Settings.APUEnabled on every DMA and every port r/w, so leaving
+ * Settings.APUEnabled=true means the bypass is defeated within µs.
+ * When bypass_pace is on we skip paceFrame() so raw emulator fps shows. */
+extern "C" bool g_prof_bypass_apu;
+extern "C" bool g_prof_bypass_pace;
+bool g_prof_bypass_apu = false;
+bool g_prof_bypass_pace = false;
+
+static bool s_prof_apu_bypass_active = false;
+static bool s_prof_saved_apuenabled  = true;
+static void dbg_apply_apu_bypass(bool on)
+{
+    if (on && !s_prof_apu_bypass_active) {
+        s_prof_saved_apuenabled = Settings.APUEnabled;
+        s_prof_apu_bypass_active = true;
+    } else if (!on && s_prof_apu_bypass_active) {
+        Settings.APUEnabled = s_prof_saved_apuenabled;
+        IAPU.APUExecuting   = s_prof_saved_apuenabled;
+        s_prof_apu_bypass_active = false;
+        return;
+    }
+    if (on) {
+        Settings.APUEnabled = false;
+        IAPU.APUExecuting   = false;
+    }
+}
+#endif
+
 static void __not_in_flash_func(pump_audio)(void)
 {
+#if PROFILE_BUCKETS
+    if (g_prof_bypass_apu) return;
+#endif
     if (!settings.flags.audioEnabled) return;
 
     int free_slots = audio_free_samples();
@@ -154,8 +345,21 @@ static void __not_in_flash_func(pump_audio)(void)
 
 /* -------------------------------------------------------------------------
  * Frame pacing — 60 Hz NTSC via PaceFrames60fps, 50 Hz PAL via sleep_until.
- * Same model as pico-infonesPlus's paceFrame(). */
+ * Same model as pico-infonesPlus's paceFrame().
+ *
+ * PACE_SOFT_60FPS replaces the vsync-locked NTSC pacer with a time-based
+ * budget (target += 16716 us per frame; sleep only if ahead). The
+ * pico_shared vsync pacer aligns every SNES frame to a display vsync
+ * tick — great for tearing, but when frameskip is on and work per
+ * SNES-frame is uneven (render 42 ms, skip 4 ms, skip 4 ms) it aligns
+ * each frame to its own tick, forcing 3 SNES frames into 4 vsync
+ * intervals = 45 fps even when the emulator could produce 60. Soft
+ * pacing lets the emulator free-run at its true rate; may introduce
+ * tearing on the blit if it lands mid-scan. */
 static absolute_time_t pal_next_frame;
+#if PACE_SOFT_60FPS
+static absolute_time_t soft_next_frame;
+#endif
 static void paceFrame(bool init)
 {
     if (Settings.PAL) {
@@ -170,7 +374,29 @@ static void paceFrame(bool init)
             pal_next_frame = make_timeout_time_us(20000);
         }
     } else {
+#if PACE_SOFT_60FPS
+        if (init) {
+            soft_next_frame = make_timeout_time_us(16716);
+            return;
+        }
+        if (absolute_time_diff_us(get_absolute_time(), soft_next_frame) > 0) {
+            sleep_until(soft_next_frame);
+        }
+        soft_next_frame = delayed_by_us(soft_next_frame, 16716);
+        /* Resync when persistently far behind schedule (a heavy scene the
+         * emulator can't sustain 60fps in). Two things matter here:
+         *   - Threshold big enough that resyncs are rare (200 ms).
+         *   - Set target = now - 16716, NOT now + 16716: the latter puts
+         *     target ahead of now and triggers a burst of 12+ ms sleeps
+         *     on the next skip frames, offsetting the real emulator rate.
+         *     Starting one frame in the PAST means the immediate next
+         *     frame ends up naturally behind schedule — no catch-up sleeps. */
+        if (absolute_time_diff_us(get_absolute_time(), soft_next_frame) < -200000) {
+            soft_next_frame = delayed_by_us(get_absolute_time(), -16716);
+        }
+#else
         Frens::PaceFrames60fps(init);
+#endif
     }
 }
 
@@ -279,33 +505,87 @@ static void run_emulator(void)
     if (!S9xInitGFX())     { snprintf(ErrorMessage, ERRORMESSAGESIZE, "GFX init failed");     return; }
     Frens::dumpHeapStats("after-GFX");
 
+#if HSTX && MIX_ON_CORE1
+    /* Sound is fully initialized (S9xInitSound + S9xSetPlaybackRate ran
+     * in main()) — core1 may start mixing. */
+    mix_c1_resume();
+#endif
+
     paceFrame(true);
 
     uint32_t frame = 0;
     uint8_t  skipFrames = 0;
+#if HSTX
+    uint32_t audio_min_level = UINT32_MAX;
+    uint32_t audio_underruns_last = hstx_di_queue_get_underrun_count();
+#endif
     while (true) {
+#if PROFILE_BUCKETS
+        uint32_t t0 = time_us_32();
+#endif
         host_tick();
+#if PROFILE_BUCKETS
+        uint32_t t1 = time_us_32(); prof_us_host_tick += (t1 - t0);
+#endif
 
         if (wantsMenu()) {
+#if HSTX && BLIT_ON_CORE1
+            /* Menu repaints the framebuffer — wait for any in-flight blit. */
+            blit_wait_done();
+#endif
+#if HSTX && MIX_ON_CORE1
+            /* The menu's wavplayer is the other DI-queue producer, and
+             * menu actions may touch sound state — park the mixer. */
+            mix_c1_park();
+#endif
             int r = showSettingsMenu(true);
             (void)r;
             /* Repaint border in case the menu touched the framebuffer. */
 #if HSTX
             memset(fb, 0, 320 * 240 * sizeof(uint16_t));
 #endif
+#if HSTX && MIX_ON_CORE1
+            mix_c1_resume();
+#endif
             paceFrame(true);
         }
 
         IPPU.RenderThisFrame = (skipFrames == 0);
 
+#if HSTX && BLIT_ON_CORE1
+        /* S9xMainLoop overwrites GFX.Screen on rendered frames; the
+         * previous blit must have consumed it first. With frameskip on
+         * the blit finished two frames ago and this never spins. */
+        if (IPPU.RenderThisFrame) blit_wait_done();
+#endif
+
+#if PROFILE_BUCKETS
+        /* Re-apply the A/B toggle each frame: bypass may have been
+         * defeated by DMA / port writes since last frame. */
+        dbg_apply_apu_bypass(g_prof_bypass_apu);
+        bool rendered_this_frame = IPPU.RenderThisFrame;
+        uint32_t t2 = time_us_32();
+#endif
         S9xMainLoop();
+#if PROFILE_BUCKETS
+        uint32_t t3 = time_us_32();
+        {
+            uint32_t d = t3 - t2;
+            if (rendered_this_frame) { prof_us_main_r += d; prof_frames_r++; }
+            else                     { prof_us_main_s += d; prof_frames_s++; }
+        }
+#endif
 
 #if HSTX
         /* Blit private PSRAM screen → HSTX SRAM framebuffer, centered.
-         * 256*224*2 = 112 KB per NTSC frame, dominated by PSRAM read
-         * bandwidth (~70 MB/s) — finishes well before HSTX scan reaches
-         * the SNES region on the next frame, eliminating mid-write tearing. */
+         * 256*224*2 = 112 KB per NTSC frame (~2.5 ms of PSRAM reads). */
         if (IPPU.RenderThisFrame) {
+#if BLIT_ON_CORE1
+            /* Hand the copy to core1's idle loop; core0 moves straight on
+             * to emulating the next frame. */
+            blit_submit(g_snes_private_screen,
+                        fb + marginTop * 320 + marginLeft, snes_h);
+#else
             const uint16_t * __restrict src = g_snes_private_screen;
             uint16_t       * __restrict dst = fb + marginTop * 320 + marginLeft;
             for (int y = 0; y < snes_h; y++) {
@@ -313,7 +593,11 @@ static void run_emulator(void)
                 src += SNES_WIDTH;
                 dst += 320;
             }
+#endif
         }
+#endif
+#if PROFILE_BUCKETS
+        uint32_t t4 = time_us_32(); prof_us_blit += (t4 - t3);
 #endif
 
         if (skipFrames == 0) {
@@ -326,9 +610,54 @@ static void run_emulator(void)
             skipFrames--;
         }
 
+#if !(HSTX && MIX_ON_CORE1)
         pump_audio();
+#endif
+#if PROFILE_BUCKETS
+        uint32_t t5 = time_us_32(); prof_us_pump += (t5 - t4);
+        if (!g_prof_bypass_pace)
+#endif
         paceFrame(false);
+#if PROFILE_BUCKETS
+        uint32_t t6 = time_us_32(); prof_us_pace += (t6 - t5);
+#endif
         frame++;
+
+#if HSTX
+        /* Audio health tracking (always on — dropouts were reported in
+         * release builds): min DI-queue level per second, sampled once
+         * per frame. Underrun ground truth comes from the queue itself.
+         * Only meaningful when audio routes to HDMI — with external I2S
+         * audio the DI queue receives nothing and underruns by design. */
+#if EXT_AUDIO_IS_ENABLED
+        if (!settings.flags.useExtAudio)
+#endif
+        {
+            uint32_t lvl = hstx_di_queue_get_level();
+            if (lvl < audio_min_level) audio_min_level = lvl;
+        }
+#endif
+
+#if PROFILE_BUCKETS
+        /* 4-state cycle, ~5 s per state (starts at state 0 so the first
+         * boot handshakes settle before the first flip):
+         *   0: baseline (APU on,  pace on)
+         *   1: no APU   (APU off, pace on)
+         *   2: no pace  (APU on,  pace off) — raw emulator fps
+         *   3: no both  (APU off, pace off) */
+        {
+            static uint64_t ab_t0_us = 0;
+            static uint8_t  ab_state = 0;
+            uint64_t nowab = Frens::time_us();
+            if (ab_t0_us == 0) ab_t0_us = nowab;
+            if (nowab - ab_t0_us >= 5000000) {
+                ab_state = (ab_state + 1) & 3;
+                g_prof_bypass_apu  = (ab_state & 1) != 0;
+                g_prof_bypass_pace = (ab_state & 2) != 0;
+                ab_t0_us = nowab;
+            }
+        }
+#endif
 
         /* UART FPS readout once per second (no on-screen overlay yet). */
         static uint64_t fps_t0_us = 0;
@@ -337,8 +666,46 @@ static void run_emulator(void)
         if (fps_t0_us == 0) { fps_t0_us = now; fps_f0 = frame; }
         else if (now - fps_t0_us >= 1000000) {
             uint32_t delta = frame - fps_f0;
+#if PROFILE_BUCKETS
+            uint32_t d  = delta ? delta : 1;
+            uint32_t dr = prof_frames_r ? prof_frames_r : 1;
+            uint32_t ds = prof_frames_s ? prof_frames_s : 1;
+            printf("fps=%lu PAL=%d skip=%d bypAPU=%d bypPACE=%d "
+                   "us/frm host=%lu mainR=%lu(x%lu) mainS=%lu(x%lu) "
+                   "blit=%lu pump=%lu pace=%lu\n",
+                   (unsigned long)delta, (int)Settings.PAL, settings.flags.frameSkip,
+                   (int)g_prof_bypass_apu, (int)g_prof_bypass_pace,
+                   (unsigned long)(prof_us_host_tick / d),
+                   (unsigned long)(prof_us_main_r / dr), (unsigned long)prof_frames_r,
+                   (unsigned long)(prof_us_main_s / ds), (unsigned long)prof_frames_s,
+                   (unsigned long)(prof_us_blit / d),
+                   (unsigned long)(prof_us_pump / d),
+                   (unsigned long)(prof_us_pace / d));
+            prof_us_host_tick = prof_us_main_r = prof_us_main_s =
+                prof_us_blit = prof_us_pump = prof_us_pace = 0;
+            prof_frames_r = prof_frames_s = 0;
+#else
             printf("fps=%lu PAL=%d skip=%d\n",
                    (unsigned long)delta, (int)Settings.PAL, settings.flags.frameSkip);
+#endif
+#if HSTX
+#if EXT_AUDIO_IS_ENABLED
+            if (!settings.flags.useExtAudio)
+#endif
+            {
+                uint32_t ur = hstx_di_queue_get_underrun_count();
+                /* Only chatter when audio health is abnormal. minlvl is
+                 * DI packets (4 samples each); watermark is 200. */
+                if (ur != audio_underruns_last || audio_min_level < 20) {
+                    printf("audio: underruns+%lu minlvl=%lu resyncs=%d\n",
+                           (unsigned long)(ur - audio_underruns_last),
+                           (unsigned long)audio_min_level,
+                           get_video_output_resync_count());
+                }
+                audio_underruns_last = ur;
+                audio_min_level = UINT32_MAX;
+            }
+#endif
             fps_t0_us = now;
             fps_f0 = frame;
         }
@@ -372,6 +739,17 @@ int main()
     printf("==========================================================================================\n");
 
     FrensSettings::initSettings(FrensSettings::emulators::SNES);
+
+#if HSTX && (BLIT_ON_CORE1 || MIX_ON_CORE1)
+    /* Register BEFORE initAll launches core1: background_task isn't
+     * volatile in video_output.c, so core1's loop may legally cache it —
+     * registering first guarantees visibility. The task no-ops until the
+     * first blit_submit() / mix_c1_resume(). */
+#if MIX_ON_CORE1
+    port_sound_lock_init();
+#endif
+    video_output_set_background_task(core1_background_task);
+#endif
 
     /* Framebuffer mode + 1024-byte audio buffer on RP2350. */
     isFatalError = !Frens::initAll(selectedRom, CPUFreqKHz, 0, 0,

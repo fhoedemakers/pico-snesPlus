@@ -137,7 +137,27 @@ void S9xAPUWritePort(int32_t Address, uint8_t Byte)
    IAPU.WaitCounter++;
 }
 
+#if MIX_ON_CORE1
+/* Sound state (SoundData channels, APU.DSP ENDX/KON bits, echo state) is
+ * mutated both here (SPC700 DSP writes, core0) and by S9xMixSamples
+ * (mixer, core1). A hardware spinlock — held for the whole DSP write on
+ * this side, per 64-sample mix chunk on the other — keeps the two
+ * exclusive. Implemented in port_glue.cpp. */
+void port_sound_lock(void);
+void port_sound_unlock(void);
+static void S9xSetAPUDSPInternal(uint8_t byte);
+
 void S9xSetAPUDSP(uint8_t byte)
+{
+   port_sound_lock();
+   S9xSetAPUDSPInternal(byte);
+   port_sound_unlock();
+}
+
+static void S9xSetAPUDSPInternal(uint8_t byte)
+#else
+void S9xSetAPUDSP(uint8_t byte)
+#endif
 {
    uint8_t reg = IAPU.RAM [0xf2];
    static uint8_t KeyOn;

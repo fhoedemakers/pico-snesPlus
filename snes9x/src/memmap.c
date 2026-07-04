@@ -151,7 +151,24 @@ bool S9xInitMemory(void)
    Memory.RAM     = (uint8_t*)port_alloc_psram(RAM_SIZE);                   /* 128 KB */
    Memory.VRAM    = (uint8_t*)port_alloc_psram(VRAM_SIZE);                  /* 64 KB */
    Memory.SRAM    = (uint8_t*)port_alloc_psram(SRAM_SIZE);                  /* 64 KB cold */
-   Memory.FillRAM = (uint8_t*)port_alloc_psram(0x8000);                     /* 32 KB */
+   /* FillRAM (32 KB) is the PPU/CPU register mirror — every S9xSetPPU /
+    * S9xGetPPU / S9xSetCPU / S9xGetCPU and every DMA writeback lands
+    * here. Moving it out of PSRAM removes a large stream of small reads
+    * from the shared XIP cache. SRAM-first with PSRAM fallback (needs
+    * PICO_MALLOC_PANIC=0 so a full SRAM heap returns NULL); force PSRAM
+    * at build time via FILLRAM_IN_PSRAM=1. */
+#if FILLRAM_IN_PSRAM
+   Memory.FillRAM = (uint8_t*)port_alloc_psram(0x8000);
+#else
+   Memory.FillRAM = (uint8_t*)port_alloc_sram(0x8000);
+   if (Memory.FillRAM)
+      printf("FillRAM (32 KB) in SRAM\n");
+   else
+   {
+      Memory.FillRAM = (uint8_t*)port_alloc_psram(0x8000);
+      printf("FillRAM (32 KB) in PSRAM (SRAM heap full)\n");
+   }
+#endif
 
    /* Memory.Map (16 KB) lives in SRAM. Indexed on every CPU memory
     * access: Memory.Map[(bank<<4) | (addr>>12)] resolves to a block
@@ -160,7 +177,16 @@ bool S9xInitMemory(void)
     * stays in PSRAM because it can't fit in the remaining SRAM
     * budget after the hot snes9x code is in .time_critical. */
    Memory.Map     = (uint8_t**)port_alloc_sram(MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
-   Memory.MapInfo = (SMapInfo*)port_alloc_psram(MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));   /* 4 KB → PSRAM, freed for cpuops in SRAM */
+   /* MapInfo (4 KB, 1 byte per block) is read on every S9xGetByte/SetByte
+    * fast path (getset.c) — Speed at MapInfo[block].Speed, then Type at
+    * MapInfo[block].Type. Moving it out of PSRAM is a large win for the
+    * SRAM cost of 4 KB. PSRAM fallback if the SRAM heap is full. */
+   Memory.MapInfo = (SMapInfo*)port_alloc_sram(MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
+   if (!Memory.MapInfo)
+   {
+      Memory.MapInfo = (SMapInfo*)port_alloc_psram(MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
+      printf("MapInfo (4 KB) in PSRAM (SRAM heap full)\n");
+   }
    if (Memory.Map)     memset(Memory.Map,     0, MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
    if (Memory.MapInfo) memset(Memory.MapInfo, 0, MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
 

@@ -25,7 +25,7 @@ message("* Current build type is : ${CMAKE_BUILD_TYPE}")
 
 # Hardware / board selection. RP2350+PSRAM+HSTX only for this build.
 if(NOT HW_CONFIG)
-    set(HW_CONFIG 8 CACHE STRING "Select the hardware configuration for your board")
+    set(HW_CONFIG 2 CACHE STRING "Select the hardware configuration for your board")
 endif()
 if(NOT USE_HSTX)
     set(USE_HSTX 1 CACHE STRING "Use HSTX for display output")
@@ -134,6 +134,7 @@ target_compile_definitions(${projectname} PRIVATE
     ENABLE_VU_METER=${ENABLE_VU_METER}
     WIIPAD_DELAYED_START=${WIIPAD_DELAYED_START}
     ENABLEDVI=1
+    GENESIS_OVERCLOCK_HSTX_FIX=1
     DOUBLEFRAMEBUFFER=0
 )
 
@@ -148,7 +149,51 @@ target_compile_definitions(${projectname} PRIVATE
     # _sbrk caps at __StackLimit and returns whatever's available; newlib
     # carves the chunk into that partial extension and succeeds.
     PICO_USE_OPTIMISTIC_SBRK=1
+    # pico_malloc panics ("Out of memory") on failure by default, which
+    # defeats the SRAM-first-with-PSRAM-fallback allocations (FillRAM,
+    # MapInfo, gfx LocalState): the fallback path needs malloc to return
+    # NULL. All port allocation sites check for NULL.
+    PICO_MALLOC_PANIC=0
 )
+
+# -----------------------------------------------------------------------
+# Phase 0 profiling: enable per-frame time buckets and a 4-state A/B
+# toggle. Off by default so release builds are unchanged.
+option(PROFILE_BUCKETS "Enable per-frame profiling buckets and A/B toggles" OFF)
+if(PROFILE_BUCKETS)
+    target_compile_definitions(${projectname} PRIVATE PROFILE_BUCKETS=1)
+    message(STATUS "PROFILE_BUCKETS enabled — UART fps line includes us/frame buckets and cycles APU/pace bypass")
+endif()
+
+# Replace the pico_shared vsync-locked NTSC pacer with a soft time-based
+# 60 Hz pacer. Fixes a 10 fps loss caused by per-frame vsync alignment
+# when frameskip is on (see paceFrame comment in main.cpp). May introduce
+# tearing on the blit if it lands mid-scan.
+option(PACE_SOFT_60FPS "Use time-based (not vsync-locked) 60 Hz NTSC pacer" ON)
+if(PACE_SOFT_60FPS)
+    target_compile_definitions(${projectname} PRIVATE PACE_SOFT_60FPS=1)
+    message(STATUS "PACE_SOFT_60FPS enabled — free-running 60 Hz pacer (may tear)")
+endif()
+
+# Run the GFX.Screen (PSRAM) -> HSTX framebuffer (SRAM) blit on core1's
+# idle background-task hook instead of core0 (~2.5 ms per rendered frame
+# given back to emulation). See core1_blit_task in main.cpp.
+option(BLIT_ON_CORE1 "Off-load framebuffer blit to core1" ON)
+if(BLIT_ON_CORE1)
+    target_compile_definitions(${projectname} PRIVATE BLIT_ON_CORE1=1)
+    message(STATUS "BLIT_ON_CORE1 enabled — framebuffer blit runs on core1")
+endif()
+
+# Run S9xMixSamples + HDMI data-island encode on core1 (~850 us/frame
+# back to core0, and the DI queue stays continuously topped up instead of
+# starving against its 32 kHz drain). Sound state is guarded by a
+# hardware spinlock between core0's SPC700 DSP writes and core1's mix
+# chunks. See core1_mix_task in main.cpp / S9xSetAPUDSP in apu.c.
+option(MIX_ON_CORE1 "Off-load audio mixing to core1" ON)
+if(MIX_ON_CORE1)
+    target_compile_definitions(${projectname} PRIVATE MIX_ON_CORE1=1)
+    message(STATUS "MIX_ON_CORE1 enabled — audio mixing runs on core1")
+endif()
 
 if(DEFINED PICO_DEFAULT_UART_TX_PIN)
     target_compile_definitions(${projectname} PRIVATE
@@ -217,14 +262,20 @@ add_subdirectory(tusb_xinput xinput_host)
 target_link_options(${projectname} PRIVATE -Xlinker --print-memory-usage --data-sections)
 
 # ----- snes9x hot-path SRAM placement -------------------------------------
-# Strategy: hot snes9x C files have their entire .text renamed to
-# .time_critical_<basename> so the Pico SDK linker script (*(.time_critical*))
-# places them in SRAM. The linker auto-generates the flash->SRAM copy at boot.
-#   1. -fno-function-sections coalesces every function in the file into a
-#      single .text section. gc-sections then can't drop any one function —
-#      since all of them are reachable through dispatch tables / pointers,
-#      that's the desired behavior.
-#   2. PRE_LINK objcopy renames that monolithic .text to .time_critical_<x>.
+# Strategy: hot snes9x C files have both their .text and .rodata renamed
+# into .time_critical_* sections so the Pico SDK linker script
+# (*(.time_critical*)) places them in SRAM. The linker auto-generates the
+# flash->SRAM copy at boot.
+#   1. -fno-function-sections / -fno-data-sections coalesce every function
+#      and const object in the file into single .text / .rodata sections.
+#      gc-sections then can't drop any one function or table — since all
+#      are reachable through dispatch tables / pointers, that's desired.
+#   2. PRE_LINK objcopy renames those monolithic sections to
+#      .time_critical_<x> / .time_critical_rodata_<x>.
+# Moving .rodata pulls hot lookup tables out of the shared 16 KB XIP cache:
+# the five 65c816 dispatch tables in cpuops.c (5 KB) are read on every
+# emulated instruction; tile.c's odd/even planar tables (512 B) are hit
+# per tile. Total moved across all 12 files is ~7.7 KB.
 # Memory budget (HW_CONFIG=8, RP2350+PSRAM): all emulator buffers
 # (Memory.RAM 128K, IAPU.RAM 64K, Memory.Map 16K, VRAM, SRAM, FillRAM,
 # MapInfo, ScreenColors, TileCache, TileCached, bytes0x2000, GFX.Screen,
@@ -248,11 +299,13 @@ set(SNES9X_SRAM_HOT_FILES
 foreach(_src IN LISTS SNES9X_SRAM_HOT_FILES)
     get_filename_component(_stem "${_src}" NAME_WE)
     set_source_files_properties(snes9x/src/${_src} PROPERTIES
-        COMPILE_FLAGS "-fno-function-sections")
+        COMPILE_FLAGS "-fno-function-sections -fno-data-sections")
     add_custom_command(TARGET ${projectname} PRE_LINK
-        COMMAND ${CMAKE_OBJCOPY} --rename-section .text=.time_critical_${_stem}
+        COMMAND ${CMAKE_OBJCOPY}
+                --rename-section .text=.time_critical_${_stem}
+                --rename-section .rodata=.time_critical_rodata_${_stem}
                 "${CMAKE_BINARY_DIR}/CMakeFiles/${projectname}.dir/snes9x/src/${_src}.o"
-        COMMENT "Moving snes9x ${_src} to .time_critical (SRAM)"
+        COMMENT "Moving snes9x ${_src} .text+.rodata to .time_critical (SRAM)"
         VERBATIM)
 endforeach()
 
