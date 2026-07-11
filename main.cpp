@@ -96,7 +96,9 @@ int8_t g_settings_visibility_snes[MOPT_COUNT] = {
     0,                  /* MOPT_AUTO_SWAP_FDS_DISK — NES/FDS only */
     0,                  /* MOPT_FDS_DISK_SWAP — NES/FDS only */
     0,                  /* MOPT_OVERCLOCK — already overclocked by default here */
+    0,                  /* MOPT_FM_AUDIO — SMS-only */
     1,                  /* MOPT_ENTER_BOOTSEL_MODE */
+    1,                  /* MOPT_CONTROLLER_TEST */
 };
 
 static const uint8_t g_available_screen_modes_snes[] = {
