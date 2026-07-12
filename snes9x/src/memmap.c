@@ -151,6 +151,36 @@ bool S9xInitMemory(void)
    Memory.RAM     = (uint8_t*)port_alloc_psram(RAM_SIZE);                   /* 128 KB */
    Memory.VRAM    = (uint8_t*)port_alloc_psram(VRAM_SIZE);                  /* 64 KB */
    Memory.SRAM    = (uint8_t*)port_alloc_psram(SRAM_SIZE);                  /* 64 KB cold */
+
+   /* Memory.Map (16 KB) lives in SRAM. Indexed on every CPU memory
+    * access: Memory.Map[(bank<<4) | (addr>>12)] resolves to a block
+    * pointer that's then offset by addr & 0xFFF. Keeping it in SRAM
+    * removes one PSRAM read per emulated memory op. Memory.RAM (128 KB)
+    * stays in PSRAM because it can't fit in the remaining SRAM
+    * budget after the hot snes9x code is in .time_critical.
+    * Map and MapInfo are allocated BEFORE FillRAM: they are the hottest
+    * of the SRAM-first buffers, so when the SRAM heap can't hold all
+    * three (PIO USB builds spend ~20 KB of SRAM on the USB stack),
+    * FillRAM is the one that spills to PSRAM. */
+   Memory.Map     = (uint8_t**)port_alloc_sram(MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
+   if (!Memory.Map)
+   {
+      Memory.Map = (uint8_t**)port_alloc_psram(MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
+      printf("Map (16 KB) in PSRAM (SRAM heap full)\n");
+   }
+   /* MapInfo (4 KB, 1 byte per block) is read on every S9xGetByte/SetByte
+    * fast path (getset.c) — Speed at MapInfo[block].Speed, then Type at
+    * MapInfo[block].Type. Moving it out of PSRAM is a large win for the
+    * SRAM cost of 4 KB. PSRAM fallback if the SRAM heap is full. */
+   Memory.MapInfo = (SMapInfo*)port_alloc_sram(MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
+   if (!Memory.MapInfo)
+   {
+      Memory.MapInfo = (SMapInfo*)port_alloc_psram(MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
+      printf("MapInfo (4 KB) in PSRAM (SRAM heap full)\n");
+   }
+   if (Memory.Map)     memset(Memory.Map,     0, MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
+   if (Memory.MapInfo) memset(Memory.MapInfo, 0, MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
+
    /* FillRAM (32 KB) is the PPU/CPU register mirror — every S9xSetPPU /
     * S9xGetPPU / S9xSetCPU / S9xGetCPU and every DMA writeback lands
     * here. Moving it out of PSRAM removes a large stream of small reads
@@ -169,26 +199,6 @@ bool S9xInitMemory(void)
       printf("FillRAM (32 KB) in PSRAM (SRAM heap full)\n");
    }
 #endif
-
-   /* Memory.Map (16 KB) lives in SRAM. Indexed on every CPU memory
-    * access: Memory.Map[(bank<<4) | (addr>>12)] resolves to a block
-    * pointer that's then offset by addr & 0xFFF. Keeping it in SRAM
-    * removes one PSRAM read per emulated memory op. Memory.RAM (128 KB)
-    * stays in PSRAM because it can't fit in the remaining SRAM
-    * budget after the hot snes9x code is in .time_critical. */
-   Memory.Map     = (uint8_t**)port_alloc_sram(MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
-   /* MapInfo (4 KB, 1 byte per block) is read on every S9xGetByte/SetByte
-    * fast path (getset.c) — Speed at MapInfo[block].Speed, then Type at
-    * MapInfo[block].Type. Moving it out of PSRAM is a large win for the
-    * SRAM cost of 4 KB. PSRAM fallback if the SRAM heap is full. */
-   Memory.MapInfo = (SMapInfo*)port_alloc_sram(MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
-   if (!Memory.MapInfo)
-   {
-      Memory.MapInfo = (SMapInfo*)port_alloc_psram(MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
-      printf("MapInfo (4 KB) in PSRAM (SRAM heap full)\n");
-   }
-   if (Memory.Map)     memset(Memory.Map,     0, MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
-   if (Memory.MapInfo) memset(Memory.MapInfo, 0, MEMMAP_NUM_BLOCKS * sizeof(SMapInfo));
 
    /* ScreenColors (256*9 entries = 4.6 KB) → PSRAM. Read per-pixel during
     * render but the access pattern is sequential within a scanline, so

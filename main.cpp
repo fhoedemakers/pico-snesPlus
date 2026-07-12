@@ -35,6 +35,8 @@
 #include "hstx.h"
 #endif
 
+#include "hardware/structs/scb.h"
+
 /* snes9x core */
 extern "C" {
 #include "snes9x.h"
@@ -64,6 +66,51 @@ extern uint16_t *g_snes_private_screen;
 bool isFatalError = false;
 char *romName = nullptr;
 char selectedRom[FF_MAX_LFN] = {0};
+
+/* -------------------------------------------------------------------------
+ * Hardfault reporter — overrides the SDK's weak isr_hardfault (a bare
+ * breakpoint) on BOTH cores. At 378 MHz this board lives near its silicon
+ * margin, so when a fault fires we want the stacked frame and fault status
+ * on serial without needing a debug probe attached. RAM-resident so it
+ * still runs if XIP is unavailable (printf itself is flash-resident; if
+ * the fault happened mid-flash-write the prints are lost but the
+ * breakpoint below still lands). */
+extern "C" void __not_in_flash_func(hardfault_report)(uint32_t *sp, uint32_t exc_lr)
+{
+    armv8m_scb_hw_t *scb = scb_hw;
+    printf("\n*** HARDFAULT core%u ***\n", (unsigned)get_core_num());
+    printf("  r0=%08lx r1=%08lx r2=%08lx  r3=%08lx\n",
+           (unsigned long)sp[0], (unsigned long)sp[1],
+           (unsigned long)sp[2], (unsigned long)sp[3]);
+    printf(" r12=%08lx lr=%08lx pc=%08lx psr=%08lx\n",
+           (unsigned long)sp[4], (unsigned long)sp[5],
+           (unsigned long)sp[6], (unsigned long)sp[7]);
+    printf("  sp=%08lx exc_lr=%08lx\n", (unsigned long)(uintptr_t)sp,
+           (unsigned long)exc_lr);
+    printf("  CFSR=%08lx HFSR=%08lx MMFAR=%08lx BFAR=%08lx\n",
+           (unsigned long)scb->cfsr, (unsigned long)scb->hfsr,
+           (unsigned long)scb->mmfar, (unsigned long)scb->bfar);
+    while (true)
+        __breakpoint();
+}
+
+extern "C" __attribute__((naked)) void __not_in_flash_func(isr_hardfault)(void)
+{
+    __asm volatile(
+        "tst lr, #4          \n" /* which stack holds the exception frame? */
+        "ite eq              \n"
+        "mrseq r0, msp       \n"
+        "mrsne r0, psp       \n"
+        "mov r1, lr          \n"
+        "b hardfault_report  \n");
+}
+
+/* GPIO/I2C pad state refreshed by host_tick(), consumed by S9xReadJoypad
+ * (port_glue.cpp) and wantsMenu(). Encoding: see wiipad.h. */
+uint16_t wiipad_raw_cached = 0;
+/* Frame counter for the rapid-fire A/B menu setting (port_glue.cpp gates
+ * the A/B bits on bit 1, giving a 15 Hz autofire). */
+uint32_t g_rapid_fire_counter = 0;
 /* ErrorMessage[] is owned by the framework (FrensHelpers.cpp); declared
  * extern in FrensHelpers.h. */
 
@@ -75,7 +122,7 @@ int8_t g_settings_visibility_snes[MOPT_COUNT] = {
     0,                  /* MOPT_EXIT_GAME — set 1 at runtime when in-game */
     0,                  /* MOPT_RESET_GAME — set 1 at runtime when in-game */
     BOOTLOADER_BUILD,   /* MOPT_REBOOT_TO_LOADER */
-    0,                  /* MOPT_SAVE_RESTORE_STATE — deferred */
+    -1,                  /* MOPT_SAVE_RESTORE_STATE — deferred */
     1,                  /* MOPT_SCREENMODE */
     0,                  /* MOPT_SCANLINES — superseded by Screen Mode */
     HSTX,               /* MOPT_SCANLINE_TYPE */
@@ -110,13 +157,30 @@ static const uint8_t g_available_screen_modes_snes[] = {
 
 /* -------------------------------------------------------------------------
  * Audio pump — pull stereo samples from snes9x and push into the
- * framework's HDMI Data Island queue (or external I2S if enabled). */
-static int audio_free_samples(void)
+ * framework's HDMI Data Island queue (or external I2S if enabled).
+ *
+ * audio_route_to_ext() is the single source of truth for where samples go
+ * (setting on, OR headphone jack plugged in). Pacing and routing MUST use
+ * the same answer: pacing against one queue while enqueueing into the
+ * other lets the mixer run unthrottled — the unfed queue never fills, so
+ * the real sink overflows and drops samples, garbling the audio. */
+static inline bool audio_route_to_ext(void)
 {
 #if EXT_AUDIO_IS_ENABLED
-    if (settings.flags.useExtAudio) {
+    return settings.flags.useExtAudio || Frens::isHeadPhoneJackConnected();
+#else
+    return false;
+#endif
+}
+
+static int audio_free_samples(bool toExtAudio)
+{
+#if EXT_AUDIO_IS_ENABLED
+    if (toExtAudio) {
         return audio_i2s_get_freebuffer_size();
     }
+#else
+    (void)toExtAudio;
 #endif
 #if HSTX
     int level = hstx_di_queue_get_level();
@@ -128,7 +192,9 @@ static int audio_free_samples(void)
 #endif
 }
 
+#if !(HSTX && MIX_ON_CORE1)
 static int16_t mix_buf[512];  /* up to 256 stereo frames per pump call */
+#endif
 
 #if HSTX && BLIT_ON_CORE1
 /* -------------------------------------------------------------------------
@@ -218,15 +284,15 @@ static void __not_in_flash_func(core1_mix_task)(void)
 #if PROFILE_BUCKETS
     if (g_prof_bypass_apu) return;
 #endif
-
-    int free_slots = audio_free_samples();
+    bool toExtAudio = audio_route_to_ext();
+    int free_slots = audio_free_samples(toExtAudio);
     while (free_slots > 0 && mix_c1_enable) {
         int n = free_slots > 64 ? 64 : free_slots;
         port_sound_lock();
         S9xMixSamples(mix_buf_c1, n * 2);
         port_sound_unlock();
 #if EXT_AUDIO_IS_ENABLED
-        if (settings.flags.useExtAudio) {
+        if (toExtAudio) {
             for (int i = 0; i < n; i++) {
                 EXT_AUDIO_ENQUEUE_SAMPLE(mix_buf_c1[i*2], mix_buf_c1[i*2+1]);
             }
@@ -316,6 +382,11 @@ static void dbg_apply_apu_bypass(bool on)
 }
 #endif
 
+/* Core0 audio pump — only compiled when mixing has NOT moved to core1
+ * (core1_mix_task replaces it under MIX_ON_CORE1; keeping this compiled
+ * would waste mix_buf's 1 KB of .bss, which counts against the SRAM
+ * heap budget that decides whether FillRAM fits in SRAM). */
+#if !(HSTX && MIX_ON_CORE1)
 static void __not_in_flash_func(pump_audio)(void)
 {
 #if PROFILE_BUCKETS
@@ -323,7 +394,8 @@ static void __not_in_flash_func(pump_audio)(void)
 #endif
     if (!settings.flags.audioEnabled) return;
 
-    int free_slots = audio_free_samples();
+    bool toExtAudio = audio_route_to_ext();
+    int free_slots = audio_free_samples(toExtAudio);
     if (free_slots <= 0) return;
     if (free_slots > 256) free_slots = 256;  /* cap to mix_buf */
 
@@ -331,7 +403,7 @@ static void __not_in_flash_func(pump_audio)(void)
     S9xMixSamples(mix_buf, free_slots * 2);
 
 #if EXT_AUDIO_IS_ENABLED
-    if (settings.flags.useExtAudio) {
+    if (toExtAudio) {
         for (int i = 0; i < free_slots; i++) {
             EXT_AUDIO_ENQUEUE_SAMPLE(mix_buf[i*2], mix_buf[i*2+1]);
         }
@@ -344,6 +416,7 @@ static void __not_in_flash_func(pump_audio)(void)
     }
 #endif
 }
+#endif /* !(HSTX && MIX_ON_CORE1) */
 
 /* -------------------------------------------------------------------------
  * Frame pacing — 60 Hz NTSC via PaceFrames60fps, 50 Hz PAL via sleep_until.
@@ -418,19 +491,37 @@ static void host_tick(void)
 #endif
     tuh_task();
 #if WII_PIN_SDA >= 0 && WII_PIN_SCL >= 0
-    (void)wiipad_read();
+    wiipad_raw_cached = wiipad_read();
 #endif
+    g_rapid_fire_counter++;
 }
 
-/* Input — check for menu trigger (SELECT+START combo). snes9x's joypad
- * read goes through S9xReadJoypad (in port_glue.cpp), called by
- * S9xUpdateJoypads from inside S9xMainLoop. */
+/* Input — check for menu trigger (SELECT+START combo) on any connected
+ * pad: both USB players plus the GPIO NES/SNES and Wii Classic pads
+ * (without which NESPAD/Wii-only boards could never open the menu).
+ * snes9x's joypad read goes through S9xReadJoypad (in port_glue.cpp),
+ * called by S9xUpdateJoypads from inside S9xMainLoop. */
 static bool wantsMenu(void)
 {
-    auto &pad = io::getCurrentGamePadState(0);
     constexpr uint32_t combo = io::GamePadState::Button::SELECT |
                                io::GamePadState::Button::START;
-    return (pad.buttons & combo) == combo;
+    for (int i = 0; i < 2; i++)
+    {
+        if ((io::getCurrentGamePadState(i).buttons & combo) == combo)
+            return true;
+    }
+    /* nespad raw and wiipad share the low-bit layout: Select=bit2, Start=bit3. */
+    uint32_t aux = 0;
+#if NES_PIN_CLK != -1
+    aux |= nespad_states[0];
+#endif
+#if NES_PIN_CLK_1 != -1
+    aux |= nespad_states[1];
+#endif
+#if WII_PIN_SDA >= 0 && WII_PIN_SCL >= 0
+    aux |= wiipad_raw_cached;
+#endif
+    return (aux & 0x0C) == 0x0C;
 }
 
 /* -------------------------------------------------------------------------
@@ -488,7 +579,8 @@ static bool snes9x_load_rom_from_psram(uintptr_t psram_ptr, size_t romsize)
 }
 
 /* -------------------------------------------------------------------------
- * One emulator session — runs until user exits or requests reset. */
+ * One emulator session — runs until the user quits to the ROM menu.
+ * In-game reset is handled in place via S9xReset(). */
 static void run_emulator(void)
 {
     /* Compute centered placement of native SNES frame in 320x240 HSTX FB. */
@@ -541,7 +633,18 @@ static void run_emulator(void)
             mix_c1_park();
 #endif
             int r = showSettingsMenu(true);
-            (void)r;
+            if (r == 3) {
+                /* Quit game — back to the ROM menu. Leave the core1
+                 * mixer parked: main() is about to tear down the
+                 * APU/sound state it reads. */
+                return;
+            }
+            if (r == 5) {
+                /* Reset game. Do it while the mixer is still parked —
+                 * S9xReset reinitializes the APU/DSP state core1 mixes
+                 * from. playback_rate is untouched, so audio survives. */
+                S9xReset();
+            }
             /* Repaint border in case the menu touched the framebuffer. */
 #if HSTX
             memset(fb, 0, 320 * 240 * sizeof(uint16_t));
@@ -632,7 +735,7 @@ static void run_emulator(void)
          * Only meaningful when audio routes to HDMI — with external I2S
          * audio the DI queue receives nothing and underruns by design. */
 #if EXT_AUDIO_IS_ENABLED
-        if (!settings.flags.useExtAudio)
+        if (!audio_route_to_ext())
 #endif
         {
             uint32_t lvl = hstx_di_queue_get_level();
@@ -692,7 +795,7 @@ static void run_emulator(void)
 #endif
 #if HSTX
 #if EXT_AUDIO_IS_ENABLED
-            if (!settings.flags.useExtAudio)
+            if (!audio_route_to_ext())
 #endif
             {
                 uint32_t ur = hstx_di_queue_get_underrun_count();
@@ -719,15 +822,17 @@ int main()
     romName = selectedRom;
     ErrorMessage[0] = selectedRom[0] = 0;
 
-    /* 378 MHz needs ~1.30 V on RP2350; below that the PLL is unstable
-     * and you get sporadic hangs in flash XIP and PSRAM reads. Higher
-     * overclocks (432, 480, 504) were tried on this Fruit Jam board
-     * and all hard-faulted under sustained emulator load — this chip
-     * lot doesn't tolerate >378 MHz reliably even with relaxed QMI
+    /* 378 MHz needs 1.60 V on this Fruit Jam board. 1.30 V looked
+     * stable but was marginal: it booted and ran, then hard-faulted
+     * with corrupted core1 control flow (garbage PC, pristine memory)
+     * ~14 s into a game once PIO USB + TLV320 + core1 blit/mix load
+     * peaked — raising VREG to 1.60 V eliminated the crashes. Higher
+     * overclocks (432, 480, 504) were tried on this board and all
+     * hard-faulted under sustained emulator load even with relaxed QMI
      * timing for flash and PSRAM. The SRAM-code / PSRAM-buffer /
      * -O3 / IAPU+Memory.Map-in-SRAM wins are independent of the
      * overclock and remain in place. */
-    Frens::setClocksAndStartStdio(CPUFreqKHz, VREG_VOLTAGE_1_30);
+    Frens::setClocksAndStartStdio(CPUFreqKHz, VREG_VOLTAGE_1_60);
     Frens::dumpHeapStats("startup");
 
     printf("==========================================================================================\n");

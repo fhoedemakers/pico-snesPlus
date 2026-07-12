@@ -25,7 +25,7 @@ message("* Current build type is : ${CMAKE_BUILD_TYPE}")
 
 # Hardware / board selection. RP2350+PSRAM+HSTX only for this build.
 if(NOT HW_CONFIG)
-    set(HW_CONFIG 2 CACHE STRING "Select the hardware configuration for your board")
+    set(HW_CONFIG 8 CACHE STRING "Select the hardware configuration for your board")
 endif()
 if(NOT USE_HSTX)
     set(USE_HSTX 1 CACHE STRING "Use HSTX for display output")
@@ -44,6 +44,35 @@ if(NOT PSRAM_CS_PIN OR PSRAM_CS_PIN EQUAL 0)
 endif()
 
 add_definitions(-DNDEBUG)
+
+# HDMI data-island audio ring: 208 packets instead of the driver's 256
+# default, saving 48 x 144 B = 6.9 KB of SRAM heap. The queue never holds
+# more than HSTX_AUDIO_DI_HIGH_WATERMARK (200) packets — producers stop
+# there — so entries beyond ~200 are dead weight; 8 spare slots cover the
+# head/tail full-vs-empty distinction. The watermark itself must stay at
+# 200: the menu wavplayer pushes a whole frame of audio (~184 packets)
+# once per 60 Hz menu tick and needs that much queue depth. Directory-
+# scoped (add_definitions) so it reaches the pico_shared driver build.
+add_definitions(-DDI_RING_BUFFER_SIZE=208)
+
+# Opt in to the pico_shared HSTX driver's SCRATCH_X core1 stack (frees the
+# driver's 4 KB static stack buffer back to the SRAM heap). Pairs with
+# PICO_CORE1_STACK_SIZE=4096 below, which sizes the scratch reservation to
+# the full bank. Other emulators keep the driver's default static stack
+# until they opt in themselves.
+add_definitions(-DHSTX_CORE1_STACK_IN_SCRATCH_X=1)
+
+# A/B lever: force the 32 KB FillRAM PPU/CPU register mirror into PSRAM
+# even when it would fit in SRAM. FillRAM in SRAM removes QMI traffic but
+# adds core0 load on the striped-SRAM fabric shared with the HSTX DMA and
+# core1 code fetches — flip this to isolate whether SRAM-fabric contention
+# is behind display resyncs / audio underruns. Directory-scoped so it
+# reaches the snes9x_core build (memmap.c).
+option(FILLRAM_IN_PSRAM "Force FillRAM into PSRAM (A/B contention test)" OFF)
+if(FILLRAM_IN_PSRAM)
+    add_definitions(-DFILLRAM_IN_PSRAM=1)
+    message(STATUS "FILLRAM_IN_PSRAM=1 — FillRAM forced to PSRAM")
+endif()
 
 # TinyUSB family support + Pico SDK init (same dance as pico-infonesPlus).
 set(FAMILY rp2040)
@@ -136,19 +165,32 @@ target_compile_definitions(${projectname} PRIVATE
     ENABLEDVI=1
     GENESIS_OVERCLOCK_HSTX_FIX=1
     DOUBLEFRAMEBUFFER=0
+    # MantaPad (081f:e401) is sold as both a NES- and a SNES-shaped pad with
+    # the same VID/PID. Default it to SNES mode here so all buttons work at
+    # connect (other emulators keep the NES default with Y-press upgrade).
+    MANTAPAD_DEFAULT_MODE=2
 )
 
 target_compile_definitions(${projectname} PRIVATE
     PICO_PIO_USE_GPIO_BASE=1
     PICO_STACK_SIZE=3072
-    # Pico SDK's default _sbrk returns -1 if the padded request would
-    # overshoot __StackLimit, even if the user-visible allocation would
-    # have fit. Newlib's malloc pads sbrk requests when growing the
-    # wilderness, so a 128 KB malloc can fail near the heap ceiling
-    # despite there being room for the bytes themselves. With this set,
-    # _sbrk caps at __StackLimit and returns whatever's available; newlib
-    # carves the chunk into that partial extension and succeeds.
-    PICO_USE_OPTIMISTIC_SBRK=1
+    # core1 boots on the linker-reserved SCRATCH_X stack (see hstx.c).
+    # Claim the full 4 KB bank: the .scratch_x data section is empty in
+    # HSTX builds (software-TMDS sections are GC'd), and the resync path
+    # printf on core1 needs the headroom (newlib vfprintf uses 1-2 KB).
+    PICO_CORE1_STACK_SIZE=4096
+    # Strict sbrk: any request that would cross __StackLimit fails with -1
+    # and malloc returns NULL (PICO_MALLOC_PANIC=0 below), letting the
+    # SRAM-first allocations fall back to PSRAM. OPTIMISTIC_SBRK=1 is
+    # NOT safe here: it grants a ceiling-crossing request partially while
+    # newlib's contiguous extend-top path books the full requested size,
+    # so malloc hands out blocks past __StackLimit — straight into the
+    # core1/core0 stacks in scratch X/Y (caused the HW_CONFIG=8 hardfault
+    # at game start: PIO USB's ~20 KB SRAM footprint pushed S9xInitMemory
+    # over the ceiling and the Map/MapInfo memsets wiped both stacks).
+    # Cost of strict mode: newlib pads sbrk requests to 4 KB pages, so up
+    # to ~4 KB of headroom at the very top of the heap goes unused.
+    PICO_USE_OPTIMISTIC_SBRK=0
     # pico_malloc panics ("Out of memory") on failure by default, which
     # defeats the SRAM-first-with-PSRAM-fallback allocations (FillRAM,
     # MapInfo, gfx LocalState): the fallback path needs malloc to return

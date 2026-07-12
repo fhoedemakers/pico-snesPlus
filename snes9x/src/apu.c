@@ -8,6 +8,7 @@
 #include "soundux.h"
 #include "cpuexec.h"
 #include "port_alloc.h"
+#include <stdio.h>
 
 extern const int32_t NoiseFreq[32];
 
@@ -23,6 +24,16 @@ bool S9xInitAPU()
 
    if (!IAPU.RAM)
    {
+      /* PSRAM fallback keeps the game bootable if the SRAM heap ever
+       * gets this tight; the SPC700 inner loop takes the PSRAM hit.
+       * port_alloc_free discriminates by address, so no bookkeeping. */
+      IAPU.RAM = (uint8_t*) port_alloc_psram(0x10000);
+      printf("IAPU.RAM (64 KB) in PSRAM (SRAM heap full)\n");
+   }
+
+   if (!IAPU.RAM)
+   {
+      printf("S9xInitAPU: cannot allocate IAPU.RAM (64 KB)\n");
       S9xDeinitAPU();
       return false;
    }

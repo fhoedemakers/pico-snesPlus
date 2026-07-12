@@ -9,6 +9,7 @@
 #include "gfx.h"
 #include "apu.h"
 #include "port_alloc.h"
+#include <stdio.h>
 
 static const uint8_t BitShifts[8][4] =
 {
