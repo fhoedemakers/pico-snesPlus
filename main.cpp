@@ -24,6 +24,7 @@
 #include "ff.h"
 
 #include "FrensHelpers.h"
+#include "FrensFonts.h"
 #include "settings.h"
 #include "menu.h"
 #include "menu_settings.h"
@@ -66,6 +67,10 @@ extern uint16_t *g_snes_private_screen;
 bool isFatalError = false;
 char *romName = nullptr;
 char selectedRom[FF_MAX_LFN] = {0};
+
+/* Frames rendered in the last ~1 s window, updated by the per-second block in
+ * run_emulator() and read by the on-screen FPS overlay. */
+static uint32_t g_fps = 60;
 
 /* -------------------------------------------------------------------------
  * Hardfault reporter — overrides the SDK's weak isr_hardfault (a bare
@@ -579,6 +584,102 @@ static bool snes9x_load_rom_from_psram(uintptr_t psram_ptr, size_t romsize)
 }
 
 /* -------------------------------------------------------------------------
+ * On-screen FPS overlay. Stamps the two-digit g_fps value into the top-left
+ * of the freshly-rendered SNES frame (g_snes_private_screen, RGB555, stride
+ * SNES_WIDTH) just before the blit carries it to the HSTX framebuffer — so it
+ * rides along with the blit (incl. the core1 offload path) at no extra sync
+ * cost. 8x8 font, white-on-black, cols 4..19 / rows 0..7. */
+static void draw_fps_overlay(uint16_t *screen)
+{
+    const uint16_t fg = 0x7FFF;  /* white, RGB555 */
+    const uint16_t bg = 0x0000;  /* black         */
+    char d0 = (char)('0' + (g_fps / 10) % 10);
+    char d1 = (char)('0' + (g_fps % 10));
+    for (int row = 0; row < 8; row++) {
+        uint16_t *dst = screen + row * SNES_WIDTH + 4;
+        char s0 = getcharslicefrom8x8font(d0, row);  /* LSB = leftmost pixel */
+        char s1 = getcharslicefrom8x8font(d1, row);
+        for (int b = 0; b < 8; b++) { *dst++ = (s0 & 1) ? fg : bg; s0 >>= 1; }
+        for (int b = 0; b < 8; b++) { *dst++ = (s1 & 1) ? fg : bg; s1 >>= 1; }
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * Cartridge battery SRAM persistence. snes9x keeps the save in Memory.SRAM;
+ * the real battery size is Memory.SRAMMask+1 when Memory.SRAMSize>0 (and there
+ * is no battery when SRAMSize==0). SRTC/special-chip carts are rejected at load
+ * so there is no RTC trailer to persist. Saves live in /SAVES/SNES/<rom>.SAV.
+ *
+ * FIL (~550 B, embeds a 512 B sector window) and FILINFO (~276 B) are far too
+ * large for the 3 KB core0 stack (PICO_STACK_SIZE) — allocate them in PSRAM via
+ * Frens::f_malloc / f_free (panics on OOM, so never NULL). */
+#define SNES_SAVE_DIR (GAMESAVEDIR "/SNES")   /* "/SAVES/SNES" */
+
+static void snes_sram_path(char *out, size_t n)
+{
+    char base[FF_MAX_LFN];
+    strncpy(base, Frens::GetfileNameFromFullPath(romName), sizeof(base) - 1);
+    base[sizeof(base) - 1] = 0;
+    Frens::stripextensionfromfilename(base);
+    snprintf(out, n, "%s/%s.SAV", SNES_SAVE_DIR, base);
+}
+
+static void snes_load_sram(void)
+{
+    if (Memory.SRAMSize == 0) return;                 /* no battery */
+    size_t sz = (size_t)Memory.SRAMMask + 1;
+    memset(Memory.SRAM, 0, sz);                       /* deterministic first boot */
+
+    char path[FF_MAX_LFN];
+    snes_sram_path(path, sizeof(path));
+
+    FILINFO *fno = (FILINFO *)Frens::f_malloc(sizeof(FILINFO));
+    if (f_stat(path, fno) != FR_OK) {
+        printf("SRAM: no save file %s\n", path);
+        Frens::f_free(fno);
+        return;
+    }
+    FIL *file = (FIL *)Frens::f_malloc(sizeof(FIL));
+    if (f_open(file, path, FA_READ) == FR_OK) {
+        UINT br = 0;
+        UINT toread = (fno->fsize < sz) ? (UINT)fno->fsize : (UINT)sz;
+        if (f_read(file, Memory.SRAM, toread, &br) == FR_OK)
+            printf("SRAM: loaded %u bytes from %s\n", (unsigned)br, path);
+        else
+            printf("SRAM: read error %s\n", path);
+        f_close(file);
+    } else {
+        printf("SRAM: cannot open %s for read\n", path);
+    }
+    Frens::f_free(file);
+    Frens::f_free(fno);
+}
+
+static void snes_save_sram(void)
+{
+    if (Memory.SRAMSize == 0) return;                 /* no battery */
+    size_t sz = (size_t)Memory.SRAMMask + 1;
+
+    f_mkdir(SNES_SAVE_DIR);                            /* idempotent; FR_EXIST ok */
+
+    char path[FF_MAX_LFN];
+    snes_sram_path(path, sizeof(path));
+
+    FIL *file = (FIL *)Frens::f_malloc(sizeof(FIL));
+    if (f_open(file, path, FA_WRITE | FA_CREATE_ALWAYS) == FR_OK) {
+        UINT bw = 0;
+        if (f_write(file, Memory.SRAM, (UINT)sz, &bw) == FR_OK)
+            printf("SRAM: saved %u bytes to %s\n", (unsigned)bw, path);
+        else
+            printf("SRAM: write error %s\n", path);
+        f_close(file);
+    } else {
+        printf("SRAM: cannot open %s for write\n", path);
+    }
+    Frens::f_free(file);
+}
+
+/* -------------------------------------------------------------------------
  * One emulator session — runs until the user quits to the ROM menu.
  * In-game reset is handled in place via S9xReset(). */
 static void run_emulator(void)
@@ -685,6 +786,11 @@ static void run_emulator(void)
         /* Blit private PSRAM screen → HSTX SRAM framebuffer, centered.
          * 256*224*2 = 112 KB per NTSC frame (~2.5 ms of PSRAM reads). */
         if (IPPU.RenderThisFrame) {
+            /* Stamp the FPS digits into the source frame before the blit so
+             * they ride along with it (incl. the core1 offload) — no extra
+             * sync, no single-buffered-scanout timing hazard. */
+            if (settings.flags.displayFrameRate)
+                draw_fps_overlay(g_snes_private_screen);
 #if BLIT_ON_CORE1
             /* Hand the copy to core1's idle loop; core0 moves straight on
              * to emulating the next frame. */
@@ -764,13 +870,17 @@ static void run_emulator(void)
         }
 #endif
 
-        /* UART FPS readout once per second (no on-screen overlay yet). */
+        /* Once-per-second window: drive the on-screen FPS overlay (g_fps) and
+         * the audio-health readout below. The frame count over ~1 s is the
+         * windowed average the overlay wants — immune to soft-pacing/frameskip
+         * flicker. */
         static uint64_t fps_t0_us = 0;
         static uint32_t fps_f0 = 0;
         uint64_t now = Frens::time_us();
         if (fps_t0_us == 0) { fps_t0_us = now; fps_f0 = frame; }
         else if (now - fps_t0_us >= 1000000) {
             uint32_t delta = frame - fps_f0;
+            g_fps = delta;
 #if PROFILE_BUCKETS
             uint32_t d  = delta ? delta : 1;
             uint32_t dr = prof_frames_r ? prof_frames_r : 1;
@@ -789,9 +899,6 @@ static void run_emulator(void)
             prof_us_host_tick = prof_us_main_r = prof_us_main_s =
                 prof_us_blit = prof_us_pump = prof_us_pace = 0;
             prof_frames_r = prof_frames_s = 0;
-#else
-            printf("fps=%lu PAL=%d skip=%d\n",
-                   (unsigned long)delta, (int)Settings.PAL, settings.flags.frameSkip);
 #endif
 #if HSTX
 #if EXT_AUDIO_IS_ENABLED
@@ -889,13 +996,13 @@ int main()
 
         /* The framework's menu already copied the ROM into PSRAM and
          * stored the pointer in ROM_FILE_ADDR. We just need its size. */
-        FIL fil;
+        FIL *fil = (FIL *)Frens::f_malloc(sizeof(FIL));
         size_t romsize = 0;
-        if (f_open(&fil, selectedRom, FA_READ) == FR_OK) {
-            romsize = f_size(&fil);
-            f_close(&fil);
+        if (f_open(fil, selectedRom, FA_READ) == FR_OK) {
+            romsize = f_size(fil);
+            f_close(fil);
         }
-
+        Frens::f_free(fil);
         if (!ROM_FILE_ADDR || !romsize) {
             strcpy(ErrorMessage, "ROM load failed");
             selectedRom[0] = 0;
@@ -933,7 +1040,14 @@ int main()
         }
         Frens::dumpHeapStats("after-LoadROM");
 
+        /* Restore battery SRAM from SD before the session starts. LoadROM's
+         * S9xReset does not clear Memory.SRAM, so the loaded save survives. */
+        snes_load_sram();
+
         run_emulator();
+
+        /* Flush battery SRAM back to SD before S9xDeinitMemory frees it. */
+        snes_save_sram();
 
         /* Return to menu: tear down all snes9x state so the menu has room. */
         S9xDeinitGFX();
