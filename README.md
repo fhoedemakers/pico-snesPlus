@@ -18,7 +18,7 @@ Please read this section before using the emulator. SNES emulation is demanding 
 - **Games with special chips in the cartridge are not supported.** ROMs that require Super FX, SA-1, S-DD1, C4, DSP-1 to DSP-4, SPC7110, OBC1, or S-RTC are detected at load time and refused with a message. This excludes a significant part of the SNES library, including titles such as Star Fox, Yoshi's Island, Super Mario Kart, Super Mario RPG, Kirby Super Star, and Mega Man X2/X3.
 - **NTSC (60 Hz) games do not run at a solid 60 fps.** Frame skipping (one rendered frame out of three) is enabled by default and can be turned off in the settings menu, at the cost of speed. **PAL (50 Hz) games run better** and generally come closer to full speed.
 - **Audio is functional but has occasional dropouts** when emulation cannot keep up with real-time sample playback.
-- **Battery saves are persisted, but save states are not.** In-game saves that a cartridge writes to its battery-backed SRAM are stored on the SD card under `/SAVES/SNES/`. The save is written when you quit the game to the ROM menu (Select + Start → Quit game), so **quit to the menu before powering off** to keep your progress — pulling power mid-game loses everything since the last quit. There is no separate save-state feature. Games that use password systems are unaffected.
+- **Game progress cannot be saved yet.** There are no save states, and battery-backed cartridge SRAM is not persisted to the SD card. When the device is powered off, all progress is lost. Games that use password systems are unaffected. Saving battery-backed SRAM to the SD card is planned for a later release.
 - Development and testing take place primarily on the Adafruit Fruit Jam. The other supported boards receive less testing.
 
 ***
@@ -59,7 +59,7 @@ For wiring and assembly instructions, see the setup sections of the [pico-infone
 3. Insert the card into the SD card slot and power on the device.
 4. Select a game in the on-screen menu to start it.
 
-In-game battery saves are written to the SD card under `/SAVES/SNES/` (created automatically) when you quit a game to the ROM menu, so quit to the menu before powering off. There are no save states; see [Status and limitations](#status-and-limitations).
+Remember that save data is **not** written to the SD card; see [Status and limitations](#status-and-limitations).
 
 ***
 
@@ -98,7 +98,7 @@ In the menu:
 
 In game:
 
-- **Select + Start** opens the settings menu. From there you can quit to the ROM menu (which writes the cartridge's battery save to the SD card), reset the game, or change settings: screen mode (8:7 or 1:1, with or without scanlines), frame rate display, audio on/off, frame skip, rapid-fire on A/B, font colors, the controller test screen, and board-specific options such as speaker volume and the NeoPixel VU meter on the Fruit Jam. Settings are remembered across restarts.
+- **Select + Start** opens the settings menu. From there you can quit to the ROM menu, reset the game, or change settings: screen mode (8:7 or 1:1, with or without scanlines), frame rate display, audio on/off, frame skip, rapid-fire on A/B, font colors, the controller test screen, and board-specific options such as speaker volume and the NeoPixel VU meter on the Fruit Jam. Settings are remembered across restarts.
 
 ***
 
