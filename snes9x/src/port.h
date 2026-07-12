@@ -68,8 +68,12 @@
 #endif
 
 #define ABS(X)   ((X) <  0  ? -(X) : (X))
+#ifndef MIN
 #define MIN(A,B) ((A) < (B) ?  (A) : (B))
+#endif
+#ifndef MAX
 #define MAX(A,B) ((A) > (B) ?  (A) : (B))
+#endif
 
 /* Integer square root by Halleck's method, with Legalize's speedup */
 static INLINE int32_t _isqrt(int32_t val)

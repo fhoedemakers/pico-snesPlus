@@ -54,7 +54,29 @@ Hold BOOTSEL on the Fruit Jam, plug it in, and drop the resulting
 Power the Fruit Jam with the microSD card inserted. The on-screen
 menu lists your `.smc` / `.sfc` files; pick one and press Start.
 
-Inside a game, **Select + Start** opens the settings menu.
+Inside a game, **Select + Start** on any connected pad opens the
+settings menu.
+
+## Controllers
+
+Every supported controller delivers the full SNES button set
+(B, Y, Select, Start, d-pad, A, X, L, R), laid out to match the SNES
+pad positions (bottom=B, right=A, top=X, left=Y):
+
+| Controller | SNES mapping |
+| --- | --- |
+| XInput (Xbox One/360/Series, 8BitDo in X-mode) | Positional: A→B, B→A, X→Y, Y→X; LB/RB→L/R; Back→Select; Guide opens the menu |
+| DualShock 4 / DualSense | Cross→B, Circle→A, Square→Y, Triangle→X; L1 or L2→L, R1 or R2→R; Share/touchpad→Select, Options→Start |
+| MantaPad (AliExpress SNES USB pad, 081f:e401 / 0810:e501) | 1:1 by label — SNES mode is active at connect, no Y-press needed |
+| Wii Classic / SNES-Classic-mini pad (I2C port) | 1:1 by label, including L/R (ZL/ZR also act as L/R) |
+| SNES controller on the GPIO NES port (boards that have one) | 1:1 by label — the port clocks all 16 bits |
+| NES controller on the GPIO NES port | Positional: A→B, B→Y (jump/run); Select/Start/d-pad 1:1 |
+| USB keyboard | Z=B, X=A, C=X, V=Y, Q=L, W=R, A=Select, S=Start, arrows=d-pad |
+| PS Classic | Cross→B, Circle→A, Square→Y, Triangle→X (shoulders not mapped yet) |
+
+Two players: a second USB pad is player 2. When a USB pad is
+connected, the GPIO NES/SNES pad and the Wii Classic pad act as
+player 2; without one they are player 1.
 
 ## Acknowledgements
 
