@@ -28,6 +28,7 @@
 #include "settings.h"
 #include "menu.h"
 #include "menu_settings.h"
+#include "vumeter.h"
 #include "gamepad.h"
 #include "nespad.h"
 #include "wiipad.h"
@@ -285,6 +286,16 @@ static void __not_in_flash_func(core1_mix_task)(void)
         return;
     }
     mix_c1_parked = false;
+#if ENABLE_VU_METER
+    /* All NeoPixel writes stay on this core: turnOffAllLeds() from core0
+     * could interleave with a 5-pixel update here and leave garbage lit.
+     * Clear on the on->off transition instead (menu entry/apply clears
+     * separately, while the mixer is parked). */
+    static bool vu_was_on;
+    bool vu_on = settings.flags.enableVUMeter != 0;
+    if (vu_was_on && !vu_on) turnOffAllLeds();
+    vu_was_on = vu_on;
+#endif
     if (!settings.flags.audioEnabled) return;
 #if PROFILE_BUCKETS
     if (g_prof_bypass_apu) return;
@@ -296,6 +307,13 @@ static void __not_in_flash_func(core1_mix_task)(void)
         port_sound_lock();
         S9xMixSamples(mix_buf_c1, n * 2);
         port_sound_unlock();
+#if ENABLE_VU_METER
+        if (vu_on) {
+            for (int i = 0; i < n; i++) {
+                addSampleToVUMeter(mix_buf_c1[i*2]);
+            }
+        }
+#endif
 #if EXT_AUDIO_IS_ENABLED
         if (toExtAudio) {
             for (int i = 0; i < n; i++) {
@@ -397,6 +415,13 @@ static void __not_in_flash_func(pump_audio)(void)
 #if PROFILE_BUCKETS
     if (g_prof_bypass_apu) return;
 #endif
+#if ENABLE_VU_METER
+    /* Same on->off LED clear as core1_mix_task, for the core0-pump build. */
+    static bool vu_was_on;
+    bool vu_on = settings.flags.enableVUMeter != 0;
+    if (vu_was_on && !vu_on) turnOffAllLeds();
+    vu_was_on = vu_on;
+#endif
     if (!settings.flags.audioEnabled) return;
 
     bool toExtAudio = audio_route_to_ext();
@@ -406,6 +431,13 @@ static void __not_in_flash_func(pump_audio)(void)
 
     /* S9xMixSamples expects "count" = stereo*2 (number of int16 slots). */
     S9xMixSamples(mix_buf, free_slots * 2);
+#if ENABLE_VU_METER
+    if (vu_on) {
+        for (int i = 0; i < free_slots; i++) {
+            addSampleToVUMeter(mix_buf[i*2]);
+        }
+    }
+#endif
 
 #if EXT_AUDIO_IS_ENABLED
     if (toExtAudio) {
@@ -497,6 +529,15 @@ static void host_tick(void)
     tuh_task();
 #if WII_PIN_SDA >= 0 && WII_PIN_SCL >= 0
     wiipad_raw_cached = wiipad_read();
+#endif
+#if ENABLE_VU_METER
+    /* Physical toggle button (see vumeter.h). Only flips the setting —
+     * the audio pump owning the NeoPixel PIO clears the LEDs on the
+     * on->off transition. */
+    if (isVUMeterToggleButtonPressed()) {
+        settings.flags.enableVUMeter = !settings.flags.enableVUMeter;
+        FrensSettings::savesettings();
+    }
 #endif
     g_rapid_fire_counter++;
 }
