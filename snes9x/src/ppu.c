@@ -179,8 +179,12 @@ void S9xSetPPU(uint8_t Byte, uint16_t Address)
             PPU.BGMode = Byte & 7;
             /* BJ: BG3Priority only takes effect if BGMode==1 and the bit is set */
             PPU.BG3Priority  = ((Byte & 0x0f) == 0x09);
+#if !RENDER_TO_FB /* force-lores: interlace doubles DrawBackgroundMode5's
+                   * row range mid-frame — must never be set when rendering
+                   * into the live framebuffer (see gfx.c). */
             if (PPU.BGMode == 5 || PPU.BGMode == 6)
                IPPU.Interlace = (bool) (Memory.FillRAM[0x2133] & 1);
+#endif
          }
          break;
       case 0x2106: /* Mosaic pixel size and enable */
@@ -501,8 +505,10 @@ void S9xSetPPU(uint8_t Byte, uint16_t Address)
                FLUSH_REDRAW();
                if ((Memory.FillRAM [0x2133] ^ Byte) & 2)
                   IPPU.OBJChanged = true;
+#if !RENDER_TO_FB /* force-lores: see 0x2105 above */
                if (PPU.BGMode == 5 || PPU.BGMode == 6)
                   IPPU.Interlace = (bool) (Byte & 1);
+#endif
             }
          }
          break;

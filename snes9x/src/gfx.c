@@ -259,6 +259,7 @@ void S9xStartScreenRefresh(void)
    {
       IPPU.PreviousLine = IPPU.CurrentLine = 0;
 
+#if !RENDER_TO_FB
       if (PPU.BGMode == 5 || PPU.BGMode == 6)
          IPPU.Interlace = (Memory.FillRAM[0x2133] & 1);
       if (PPU.BGMode == 5 || PPU.BGMode == 6 || IPPU.Interlace)
@@ -285,6 +286,10 @@ void S9xStartScreenRefresh(void)
          }
       }
       else
+#endif /* !RENDER_TO_FB — force-lores: GFX.Screen is the live 320-wide
+        * SRAM framebuffer; the 512-wide/interlaced layouts don't fit it
+        * (and overflowed the 512-B-pitch private buffer too). Mode 5/6
+        * stays 256-wide-garbled but every write is contained. */
       {
          IPPU.RenderedScreenWidth = 256;
          IPPU.RenderedScreenHeight = PPU.ScreenHeight;
@@ -567,7 +572,15 @@ void S9xSetupOBJ(void)
       // uint8_t OBJOnLine[SNES_HEIGHT_EXTENDED][128];
 
       // We can't afford 30K on the stack. But maybe we have a better buffer to abuse?
+#if RENDER_TO_FB
+      /* GFX.SubScreen is a ~8.7 KB staging strip now — far too small.
+       * Use the dedicated PSRAM scratch (port_glue.cpp); same tier the
+       * full-size SubScreen lived in before the strip renderer. */
+      extern uint8_t *s9x_port_objonline;
+      uint8_t (*OBJOnLine)[128] = (void *)s9x_port_objonline;
+#else
       uint8_t (*OBJOnLine)[128] = (void *)GFX.SubScreen;
+#endif
 
       /* We only initialise this per line, as needed. [Neb]
        * Bonus: We can quickly avoid looping if a line has no OBJs. */
@@ -2626,12 +2639,51 @@ void S9xUpdateScreen(void)
    if ((GFX.EndY = IPPU.CurrentLine - 1) >= PPU.ScreenHeight)
       GFX.EndY = PPU.ScreenHeight - 1;
 
+#if RENDER_TO_FB
+   /* The strip copy-out targets the centered window of the 240-row
+    * framebuffer; a mid-frame 224->239 overscan flip could push rows past
+    * its bottom edge before the host re-anchors. Clamp to the rows that
+    * exist below the anchor (s9x_port_max_endy from port_glue.cpp). */
+   {
+      extern int s9x_port_max_endy;
+      if ((int)GFX.EndY > s9x_port_max_endy)
+         GFX.EndY = s9x_port_max_endy;
+      if (GFX.StartY > GFX.EndY)
+      {
+         IPPU.PreviousLine = IPPU.CurrentLine;
+         return;
+      }
+   }
+#endif
+
    /* XXX: Check ForceBlank? Or anything else? */
    PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
+
+#if RENDER_TO_FB
+   /* Strip renderer: render the block in S9X_STRIP_ROWS-row chunks into
+    * the SRAM staging strips (port_glue.cpp), copying each chunk's
+    * finished rows into the framebuffer window as it completes. Scan-out
+    * then never sees mid-composite pixels. The renderer already handles
+    * arbitrary [StartY,EndY] blocks (mid-frame FLUSH_REDRAW), so finer
+    * chunking is safe; seam tiles take the existing clipped-tile paths.
+    * The loop body below is the unmodified single-block renderer. */
+   uint32_t s9x_full_endy = GFX.EndY;
+   uint32_t s9x_chunk;
+   for (s9x_chunk = GFX.StartY; s9x_chunk <= s9x_full_endy; s9x_chunk += S9X_STRIP_ROWS)
+   {
+      extern void s9x_port_strip_repoint(uint32_t row);
+      GFX.StartY = s9x_chunk;
+      GFX.EndY   = s9x_chunk + S9X_STRIP_ROWS - 1;
+      if (GFX.EndY > s9x_full_endy)
+         GFX.EndY = s9x_full_endy;
+      s9x_port_strip_repoint(s9x_chunk);
+      GFX.S = GFX.Screen;
+#endif
 
    starty = GFX.StartY;
    endy   = GFX.EndY;
 
+#if !RENDER_TO_FB /* force-lores: see S9xStartScreenRefresh */
    if (PPU.BGMode == 5 || PPU.BGMode == 6 || IPPU.Interlace || IPPU.DoubleHeightPixels)
    {
       if (PPU.BGMode == 5 || PPU.BGMode == 6 || IPPU.Interlace)
@@ -2689,6 +2741,7 @@ void S9xUpdateScreen(void)
          }
       }
    }
+#endif /* !RENDER_TO_FB */
 
    black = BLACK | (BLACK << 16);
 
@@ -3095,6 +3148,15 @@ void S9xUpdateScreen(void)
          RenderScreen(GFX.Screen, false, true, SUB_SCREEN_DEPTH);
       }
    }
+
+#if RENDER_TO_FB
+      /* Chunk fully composited — publish it to the framebuffer window. */
+      {
+         extern void s9x_port_strip_copyout(uint32_t start_row, uint32_t end_row);
+         s9x_port_strip_copyout(GFX.StartY, GFX.EndY);
+      }
+   } /* strip chunk loop */
+#endif
 
    if (PPU.BGMode != 5 && PPU.BGMode != 6 && IPPU.DoubleWidthPixels)
    {

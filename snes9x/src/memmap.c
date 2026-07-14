@@ -187,8 +187,12 @@ bool S9xInitMemory(void)
     * from the shared XIP cache. SRAM-first with PSRAM fallback (needs
     * PICO_MALLOC_PANIC=0 so a full SRAM heap returns NULL); force PSRAM
     * at build time via FILLRAM_IN_PSRAM=1. */
-#if FILLRAM_IN_PSRAM
+#if FILLRAM_IN_PSRAM || RENDER_TO_FB
+   /* RENDER_TO_FB: the render strips (~26 KB, port_glue.cpp) need the SRAM
+    * headroom FillRAM would consume, and FillRAM SRAM-vs-PSRAM measured as
+    * fps-neutral (2026-07-12 A/B) — the strips are the better tenant. */
    Memory.FillRAM = (uint8_t*)port_alloc_psram(0x8000);
+   printf("FillRAM (32 KB) in PSRAM (forced)\n");
 #else
    Memory.FillRAM = (uint8_t*)port_alloc_sram(0x8000);
    if (Memory.FillRAM)

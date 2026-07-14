@@ -3,6 +3,8 @@
  * GamePadState to SNES button bits. Display init parks GFX.Screen on the
  * caller-provided HSTX framebuffer pointer. */
 
+#include <stdio.h>
+
 extern "C" {
 #include "snes9x.h"
 #include "memmap.h"
@@ -21,6 +23,137 @@ extern "C" {
 extern uint16_t wiipad_raw_cached;
 extern uint32_t g_rapid_fire_counter;
 
+#if RENDER_TO_FB
+/* Strip renderer. S9xUpdateScreen (gfx.c) renders every scanline block in
+ * chunks of S9X_STRIP_ROWS rows into the four small SRAM staging strips
+ * below, then calls s9x_port_strip_copyout() to memcpy the FINISHED rows
+ * into the centered window of the 320x240 HSTX framebuffer. Two effects:
+ *   - scan-out only ever sees fully-composited pixels (old frame or new),
+ *     never the backdrop/partial-layer/pre-color-math intermediate states
+ *     that a direct-to-framebuffer render exposes as rolling flicker;
+ *   - screen, subscreen AND both Z buffers live in SRAM, so the per-pixel
+ *     render traffic that used to hit PSRAM (screen writes, Z clears/RMW,
+ *     subscreen composite, blit read-back) is gone entirely.
+ * The strips keep the native 512-byte pitch: GFX.Delta / GFX.DepthDelta
+ * stay constant because all four bases get the same per-chunk offset.
+ * Works because the renderer already supports arbitrary [StartY,EndY]
+ * blocks (mid-frame FLUSH_REDRAW blocks do this today) — chunking just
+ * splits them finer; seam tiles use the existing clipped-tile paths. */
+#include "hstx.h"
+#include "pico/platform.h"
+
+#define FB_WIDTH  320
+#define FB_HEIGHT 240
+
+/* Strip bases (row 0 = chunk start). +1 guard row: the force-lores guard
+ * (gfx.c) contains mode 5/6, but its double-width writers still spill up
+ * to one row past the last chunk row. */
+#define STRIP_GUARD_ROWS (S9X_STRIP_ROWS + 1)
+
+static uint8_t *strip_screen;
+static uint8_t *strip_sub;
+static uint8_t *strip_z;
+static uint8_t *strip_subz;
+
+extern "C" {
+int s9x_port_max_endy = SNES_HEIGHT - 1;
+/* Centered SNES window inside the framebuffer (copy-out target, also the
+ * FPS overlay target in main.cpp). */
+uint16_t *s9x_port_fb_window = nullptr;
+/* 239x128 scratch for S9xSetupOBJ's FirstSprite+Y case — it used to abuse
+ * GFX.SubScreen, which is now a strip far too small for it. PSRAM, same
+ * tier SubScreen was in before. */
+uint8_t *s9x_port_objonline = nullptr;
+}
+
+/* (Re-)anchor the framebuffer window for the current PPU.ScreenHeight
+ * (224 or 239 — the overscan bit flips it at runtime; main.cpp calls this
+ * again when it changes). Exports the last row the copy-out may write so
+ * S9xUpdateScreen can clamp a mid-frame flip. */
+extern "C" void s9x_port_anchor_screen(void)
+{
+    int h = PPU.ScreenHeight ? PPU.ScreenHeight
+                             : (Settings.PAL ? SNES_HEIGHT_EXTENDED : SNES_HEIGHT);
+    const int marginTop  = (FB_HEIGHT - h) / 2;
+    const int marginLeft = (FB_WIDTH - SNES_WIDTH) / 2;
+    s9x_port_fb_window = (uint16_t *)hstx_getframebuffer()
+                       + marginTop * FB_WIDTH + marginLeft;
+    s9x_port_max_endy = FB_HEIGHT - marginTop - 1;
+}
+
+/* Point the GFX buffers at the strips so absolute rows [row, row+N-1]
+ * land at strip rows [0, N-1]. The intermediate (base - row*pitch) points
+ * below the allocation; only rows >= row are ever dereferenced.
+ * Both per-chunk helpers run from RAM (__not_in_flash_func): they are
+ * called 14+ times per rendered frame from the SRAM-resident gfx.c code
+ * and must not fetch through the XIP/QMI bus they exist to relieve. */
+extern "C" void __not_in_flash_func(s9x_port_strip_repoint)(uint32_t row)
+{
+    GFX.Screen     = strip_screen - (size_t)row * SNES_WIDTH * 2;
+    GFX.SubScreen  = strip_sub    - (size_t)row * SNES_WIDTH * 2;
+    GFX.ZBuffer    = strip_z      - (size_t)row * SNES_WIDTH;
+    GFX.SubZBuffer = strip_subz   - (size_t)row * SNES_WIDTH;
+}
+
+/* Copy finished rows [start_row, end_row] from the screen strip into the
+ * framebuffer window. SRAM->SRAM, ~8 KB per 16-row chunk. */
+extern "C" void __not_in_flash_func(s9x_port_strip_copyout)(uint32_t start_row, uint32_t end_row)
+{
+    const uint8_t *src = strip_screen;
+    uint16_t      *dst = s9x_port_fb_window + start_row * FB_WIDTH;
+    for (uint32_t y = start_row; y <= end_row; y++) {
+        memcpy(dst, src, SNES_WIDTH * 2);
+        src += SNES_WIDTH * 2;
+        dst += FB_WIDTH;
+    }
+}
+
+/* SRAM-first with PSRAM fallback (needs PICO_MALLOC_PANIC=0), boot log
+ * prints the tier — same pattern as FillRAM/MapInfo in memmap.c. A strip
+ * in PSRAM still fixes the flicker but forfeits its share of the perf
+ * win, so the log matters. FillRAM is forced to PSRAM under RENDER_TO_FB
+ * (memmap.c) precisely so all four strips fit in SRAM. */
+static uint8_t *strip_alloc(size_t bytes, const char *name)
+{
+    uint8_t *p = (uint8_t *)port_alloc_sram(bytes);
+    if (p) {
+        printf("%s (%u B) in SRAM\n", name, (unsigned)bytes);
+        return p;
+    }
+    p = (uint8_t *)port_alloc_psram(bytes);
+    printf("%s (%u B) in PSRAM (SRAM heap full)\n", name, (unsigned)bytes);
+    return p;
+}
+
+extern "C" bool S9xInitDisplay(void)
+{
+    GFX.Pitch  = SNES_WIDTH * 2;   /* native 512 — strips decouple us from the fb stride */
+    GFX.ZPitch = SNES_WIDTH;
+    s9x_port_anchor_screen();
+
+    strip_screen = strip_alloc((size_t)STRIP_GUARD_ROWS * SNES_WIDTH * 2, "strip-screen");
+    strip_sub    = strip_alloc((size_t)STRIP_GUARD_ROWS * SNES_WIDTH * 2, "strip-sub");
+    strip_z      = strip_alloc((size_t)STRIP_GUARD_ROWS * SNES_WIDTH,     "strip-z");
+    strip_subz   = strip_alloc((size_t)STRIP_GUARD_ROWS * SNES_WIDTH,     "strip-subz");
+    s9x_port_objonline = (uint8_t *)port_alloc_psram((size_t)SNES_HEIGHT_EXTENDED * 128);
+
+    GFX.Screen     = strip_screen;
+    GFX.SubScreen  = strip_sub;
+    GFX.ZBuffer    = strip_z;
+    GFX.SubZBuffer = strip_subz;
+    return strip_screen && strip_sub && strip_z && strip_subz && s9x_port_objonline;
+}
+
+extern "C" void S9xDeinitDisplay(void)
+{
+    port_alloc_free(strip_screen); strip_screen = nullptr;
+    port_alloc_free(strip_sub);    strip_sub    = nullptr;
+    port_alloc_free(strip_z);      strip_z      = nullptr;
+    port_alloc_free(strip_subz);   strip_subz   = nullptr;
+    port_alloc_free(s9x_port_objonline); s9x_port_objonline = nullptr;
+    GFX.Screen = GFX.SubScreen = GFX.ZBuffer = GFX.SubZBuffer = nullptr;
+}
+#else
 /* Private PSRAM screen buffer. snes9x renders here at native 256-wide
  * pitch; main.cpp blits it into the HSTX framebuffer after S9xMainLoop
  * returns. Decoupling render from scan-out eliminates the lower-third
@@ -53,6 +186,7 @@ extern "C" void S9xDeinitDisplay(void)
     port_alloc_free(GFX.SubZBuffer); GFX.SubZBuffer = nullptr;
     GFX.Screen = nullptr;
 }
+#endif /* RENDER_TO_FB */
 
 /* USB HID/XInput pads (io::GamePadState) -> SNES joypad bits. */
 static uint32_t pad_to_snes(const io::GamePadState &pad)

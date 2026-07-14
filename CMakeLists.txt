@@ -74,6 +74,29 @@ if(FILLRAM_IN_PSRAM)
     message(STATUS "FILLRAM_IN_PSRAM=1 — FillRAM forced to PSRAM")
 endif()
 
+# Strip renderer: snes9x renders each scanline block in S9X_STRIP_ROWS-row
+# chunks into small SRAM staging strips (screen/sub/Z/subZ, ~26 KB total,
+# port_glue.cpp) and copies each finished chunk into the centered window of
+# the SRAM HSTX framebuffer. Replaces the private PSRAM screen + blit:
+# ALL per-pixel render traffic (screen writes, Z clears/RMW, subscreen
+# composite, blit read-back — the measured bottleneck behind the 54-57 fps
+# plateau) moves to SRAM, and scan-out only ever sees fully-composited
+# rows, so no mid-render flicker (a direct-to-framebuffer render showed a
+# rolling flicker band; a whole-frame SRAM buffer doesn't fit). To make the
+# strips fit, FillRAM is forced to PSRAM (memmap.c; measured fps-neutral).
+# OFF restores the legacy private-screen+blit path for an A/B.
+# Directory-scoped so it reaches the snes9x_core build (gfx.c/ppu.c carry a
+# force-lores guard that contains mode 5/6/interlace writes to the strips).
+option(RENDER_TO_FB "Strip-render snes9x via SRAM strips into the HSTX framebuffer" ON)
+if(RENDER_TO_FB AND DEFINED GPIOHSTXD0)
+    add_definitions(-DRENDER_TO_FB=1)
+    message(STATUS "RENDER_TO_FB=1 — snes9x renders directly into the HSTX framebuffer")
+elseif(RENDER_TO_FB)
+    # Non-HSTX (PicoDVI / FORCE_DVI) build: no hstx framebuffer to anchor to.
+    set(RENDER_TO_FB OFF)
+    message(STATUS "RENDER_TO_FB ignored — requires an HSTX board configuration")
+endif()
+
 # TinyUSB family support + Pico SDK init (same dance as pico-infonesPlus).
 set(FAMILY rp2040)
 include($ENV{PICO_SDK_PATH}/lib/tinyusb/hw/bsp/family_support.cmake)
@@ -219,11 +242,14 @@ endif()
 
 # Run the GFX.Screen (PSRAM) -> HSTX framebuffer (SRAM) blit on core1's
 # idle background-task hook instead of core0 (~2.5 ms per rendered frame
-# given back to emulation). See core1_blit_task in main.cpp.
+# given back to emulation). See core1_blit_task in main.cpp. Only relevant
+# to the legacy private-screen path: with RENDER_TO_FB there is no blit.
 option(BLIT_ON_CORE1 "Off-load framebuffer blit to core1" ON)
-if(BLIT_ON_CORE1)
+if(BLIT_ON_CORE1 AND NOT RENDER_TO_FB)
     target_compile_definitions(${projectname} PRIVATE BLIT_ON_CORE1=1)
     message(STATUS "BLIT_ON_CORE1 enabled — framebuffer blit runs on core1")
+elseif(BLIT_ON_CORE1)
+    message(STATUS "BLIT_ON_CORE1 ignored — RENDER_TO_FB renders directly into the framebuffer")
 endif()
 
 # Run S9xMixSamples + HDMI data-island encode on core1 (~850 us/frame
@@ -320,10 +346,12 @@ target_link_options(${projectname} PRIVATE -Xlinker --print-memory-usage --data-
 # per tile. Total moved across all 12 files is ~7.7 KB.
 # Memory budget (HW_CONFIG=8, RP2350+PSRAM): all emulator buffers
 # (Memory.RAM 128K, IAPU.RAM 64K, Memory.Map 16K, VRAM, SRAM, FillRAM,
-# MapInfo, ScreenColors, TileCache, TileCached, bytes0x2000, GFX.Screen,
-# GFX.SubScreen, GFX.Z*, sound LocalState, gfx LocalState) live in PSRAM.
-# SRAM is reserved for static code (the hot snes9x files listed below
-# plus cpuops.c) and the HSTX framebuffer (.bss).
+# MapInfo, ScreenColors, TileCache, TileCached, bytes0x2000, sound
+# LocalState, gfx LocalState) live in PSRAM. Under RENDER_TO_FB the GFX
+# render targets are ~26 KB SRAM staging strips (FillRAM forced to PSRAM
+# to make room); when OFF they are full-size PSRAM buffers with the
+# legacy blit path. SRAM is otherwise reserved for static code (the hot
+# snes9x files listed below plus cpuops.c) and the HSTX framebuffer (.bss).
 set(SNES9X_SRAM_HOT_FILES
     cpuops.c    # 65816 opcode dispatch (every emulated CPU instr)
     spc700.c    # APUExecute — SPC700 interpreter (every audio cycle)

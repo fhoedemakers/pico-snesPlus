@@ -11,7 +11,15 @@
  * SNES native resolution 256x224 (NTSC) or 256x239 (PAL) is centered in
  * the 320x240 HSTX framebuffer with a 32-px L/R margin. Pixel format is
  * RGB555 (HSTX scan-out format — snes9x's PIXEL_FORMAT is set to RGB555
- * via PICO_SNESPLUS_HSTX in port.h). */
+ * via PICO_SNESPLUS_HSTX in port.h).
+ *
+ * With RENDER_TO_FB (default) snes9x renders in S9X_STRIP_ROWS-row chunks
+ * into small SRAM staging strips and copies each finished chunk into that
+ * centered framebuffer window (strip renderer, see port_glue.cpp) — no
+ * private PSRAM screen, no blit, and scan-out never sees mid-composite
+ * pixels. Without it, the legacy path renders into a 256-wide PSRAM
+ * buffer that is blitted here after S9xMainLoop (optionally on core1,
+ * BLIT_ON_CORE1). */
 
 #include <stdio.h>
 #include <string.h>
@@ -51,8 +59,16 @@ extern "C" {
 #include "display.h"
 }
 
+#if RENDER_TO_FB
+/* port glue — strip renderer. Re-anchors the framebuffer window for the
+ * current PPU.ScreenHeight (the overscan bit flips 224<->239 at runtime)
+ * and exposes the window pointer for the FPS overlay. */
+extern "C" void s9x_port_anchor_screen(void);
+extern "C" uint16_t *s9x_port_fb_window;
+#else
 /* port glue — snes9x's render target, 256-wide RGB555 in PSRAM. */
 extern uint16_t *g_snes_private_screen;
+#endif
 
 #define EMULATOR_CLOCKFREQ_KHZ 378000   /* RP2350 overclock — 378 MHz */
 #define AUDIOBUFFERSIZE 1024
@@ -626,18 +642,19 @@ static bool snes9x_load_rom_from_psram(uintptr_t psram_ptr, size_t romsize)
 
 /* -------------------------------------------------------------------------
  * On-screen FPS overlay. Stamps the two-digit g_fps value into the top-left
- * of the freshly-rendered SNES frame (g_snes_private_screen, RGB555, stride
- * SNES_WIDTH) just before the blit carries it to the HSTX framebuffer — so it
- * rides along with the blit (incl. the core1 offload path) at no extra sync
- * cost. 8x8 font, white-on-black, cols 4..19 / rows 0..7. */
-static void draw_fps_overlay(uint16_t *screen)
+ * of the freshly-rendered SNES frame (RGB555) after S9xMainLoop returns.
+ * RENDER_TO_FB: target is the anchored framebuffer window (stride 320);
+ * legacy: g_snes_private_screen (stride SNES_WIDTH) just before the blit,
+ * so it rides along with it (incl. the core1 offload path) at no extra
+ * sync cost. 8x8 font, white-on-black, cols 4..19 / rows 0..7. */
+static void draw_fps_overlay(uint16_t *screen, int stride)
 {
     const uint16_t fg = 0x7FFF;  /* white, RGB555 */
     const uint16_t bg = 0x0000;  /* black         */
     char d0 = (char)('0' + (g_fps / 10) % 10);
     char d1 = (char)('0' + (g_fps % 10));
     for (int row = 0; row < 8; row++) {
-        uint16_t *dst = screen + row * SNES_WIDTH + 4;
+        uint16_t *dst = screen + row * stride + 4;
         char s0 = getcharslicefrom8x8font(d0, row);  /* LSB = leftmost pixel */
         char s1 = getcharslicefrom8x8font(d1, row);
         for (int b = 0; b < 8; b++) { *dst++ = (s0 & 1) ? fg : bg; s0 >>= 1; }
@@ -725,14 +742,16 @@ static void snes_save_sram(void)
  * In-game reset is handled in place via S9xReset(). */
 static void run_emulator(void)
 {
+#if !RENDER_TO_FB
     /* Compute centered placement of native SNES frame in 320x240 HSTX FB. */
     const int snes_h = Settings.PAL ? SNES_HEIGHT_EXTENDED : SNES_HEIGHT;
     const int marginTop = (240 - snes_h) / 2;
     const int marginLeft = (320 - SNES_WIDTH) / 2;
+#endif
 
 #if HSTX
     uint16_t * const fb = (uint16_t *)hstx_getframebuffer();
-    /* Clear border once. SNES region gets overwritten every frame by the blit. */
+    /* Clear border once. SNES region gets overwritten every rendered frame. */
     memset(fb, 0, 320 * 240 * sizeof(uint16_t));
 #endif
 
@@ -751,6 +770,9 @@ static void run_emulator(void)
 
     uint32_t frame = 0;
     uint8_t  skipFrames = 0;
+#if HSTX && RENDER_TO_FB
+    int last_screen_h = PPU.ScreenHeight;
+#endif
 #if HSTX
     uint32_t audio_min_level = UINT32_MAX;
     uint32_t audio_underruns_last = hstx_di_queue_get_underrun_count();
@@ -797,6 +819,18 @@ static void run_emulator(void)
             paceFrame(true);
         }
 
+#if HSTX && RENDER_TO_FB
+        /* Overscan bit flipped ScreenHeight 224<->239: re-anchor the
+         * centered copy-out window and repaint the border. (A flip
+         * mid-rendered-frame is contained by the EndY clamp in gfx.c
+         * until this catches it.) */
+        if (PPU.ScreenHeight != last_screen_h) {
+            last_screen_h = PPU.ScreenHeight;
+            s9x_port_anchor_screen();
+            memset(fb, 0, 320 * 240 * sizeof(uint16_t));
+        }
+#endif
+
         IPPU.RenderThisFrame = (skipFrames == 0);
 
 #if HSTX && BLIT_ON_CORE1
@@ -823,7 +857,13 @@ static void run_emulator(void)
         }
 #endif
 
-#if HSTX
+#if HSTX && RENDER_TO_FB
+        /* The strip renderer already copied the finished frame into the
+         * framebuffer window chunk by chunk — just stamp the FPS digits
+         * on top. */
+        if (IPPU.RenderThisFrame && settings.flags.displayFrameRate)
+            draw_fps_overlay(s9x_port_fb_window, 320);
+#elif HSTX
         /* Blit private PSRAM screen → HSTX SRAM framebuffer, centered.
          * 256*224*2 = 112 KB per NTSC frame (~2.5 ms of PSRAM reads). */
         if (IPPU.RenderThisFrame) {
@@ -831,7 +871,7 @@ static void run_emulator(void)
              * they ride along with it (incl. the core1 offload) — no extra
              * sync, no single-buffered-scanout timing hazard. */
             if (settings.flags.displayFrameRate)
-                draw_fps_overlay(g_snes_private_screen);
+                draw_fps_overlay(g_snes_private_screen, SNES_WIDTH);
 #if BLIT_ON_CORE1
             /* Hand the copy to core1's idle loop; core0 moves straight on
              * to emulating the next frame. */

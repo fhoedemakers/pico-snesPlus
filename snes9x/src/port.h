@@ -27,6 +27,16 @@
 /* The above is used to disable the 16-bit graphics mode checks sprinkled
  * throughout the code, if the pixel format is always 16-bit. */
 
+#if RENDER_TO_FB
+/* Strip renderer: S9xUpdateScreen renders each scanline block in chunks of
+ * this many rows into small SRAM staging strips (screen/sub/Z/subZ, see
+ * port_glue.cpp), then copies the finished rows into the HSTX framebuffer.
+ * Scan-out therefore only ever sees fully-composited pixels — no mid-render
+ * flicker — and ALL per-pixel render traffic (screen, subscreen, both Z
+ * buffers) stays in SRAM. 16 rows ≈ 26 KB of strips (with guard rows). */
+#define S9X_STRIP_ROWS 16
+#endif
+
 #include "pixform.h"
 
 #ifndef _WIN32
