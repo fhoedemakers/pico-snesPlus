@@ -15,7 +15,7 @@ It is a sister project of these emulators, with which it shares its menu, displa
 
 Please read this section before using the emulator. SNES emulation is demanding for this class of hardware, and this project has real limitations:
 
-- **Games with special chips in the cartridge are not supported.** ROMs that require Super FX, SA-1, S-DD1, C4, DSP-1 to DSP-4, SPC7110, OBC1, or S-RTC are detected at load time and refused with a message. This excludes a significant part of the SNES library, including titles such as Star Fox, Yoshi's Island, Super Mario Kart, Super Mario RPG, Kirby Super Star, and Mega Man X2/X3.
+- **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, and S-RTC games run; SA-1, S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.
 - **NTSC (60 Hz) games do not run at a solid 60 fps.** Frame skipping (one rendered frame out of three) is enabled by default and can be turned off in the settings menu, at the cost of speed. **PAL (50 Hz) games run better** and generally come closer to full speed.
 - **Audio is functional but has occasional dropouts** when emulation cannot keep up with real-time sample playback.
 - **Battery saves are persisted, but save states are not.** In-game saves that a cartridge writes to its battery-backed SRAM are stored on the SD card under `/SAVES/SNES/`. The save is written when you quit the game to the ROM menu (Select + Start → Quit game), so **quit to the menu before powering off** to keep your progress — pulling power mid-game loses everything since the last quit. There is no separate save-state feature. Games that use password systems are unaffected.
@@ -23,9 +23,43 @@ Please read this section before using the emulator. SNES emulation is demanding 
 
 ***
 
+## Expansion chips
+
+Many SNES cartridges carry an extra chip that the console itself does not have. These are emulated:
+
+| Chip | Status | Example games |
+| --- | --- | --- |
+| DSP-1 / DSP-1B | Emulated | Super Mario Kart, Pilotwings |
+| DSP-2 / DSP-3 / DSP-4 | Emulated | Dungeon Master, SD Gundam GX, Top Gear 3000 |
+| Super FX (GSU-1 / GSU-2) | Emulated, **speed varies — see below** | Star Fox, Yoshi's Island, Stunt Race FX, Doom |
+| C4 | Emulated | Mega Man X2, Mega Man X3 |
+| OBC1 | Emulated | Metal Combat: Falcon's Revenge |
+| S-RTC | Emulated | Dai Kaijuu Monogatari II |
+
+These are **not** emulated. Such ROMs are detected at load time and refused with a message:
+
+| Chip | Example games |
+| --- | --- |
+| SA-1 | Super Mario RPG, Kirby Super Star, Kirby's Dream Land 3 |
+| S-DD1 | Star Ocean, Street Fighter Alpha 2 |
+| SPC7110 | Far East of Eden Zero, Momotarou Dentetsu Happy |
+
+Two more chips, SETA (ST010/ST011) and BS-X, are also unimplemented but are not detected, so those carts load and then run without the chip rather than being refused. Expect them to misbehave.
+
+### A note on Super FX speed
+
+The Super FX chip is emulated correctly, but **whether a game is playable depends on how hard it leans on the chip**:
+
+- **Yoshi's Island (GSU-2) runs fine** and is the good case. It uses the chip mostly for sprite and effect work on top of ordinary PPU rendering.
+- **Star Fox renders correctly but is too slow to play**, landing around 30 fps rather than 60. It draws its entire 3D world through the chip, and the GSU accounts for roughly a third of all emulation time.
+
+The bottleneck is PSRAM bandwidth, not the CPU clock, so the overclock described below does not help these games — Star Fox runs at the same speed at 504 MHz as it did at 378 MHz. Other Super FX titles fall somewhere between these two cases; try them and see.
+
+***
+
 ## Warning
 
-To reach the performance described above, the RP2350 is overclocked to 378 MHz with the core voltage raised to 1.60 V (the default is 1.10 V). This is a significant overclock and overvolt that may reduce the lifespan of the chip.
+To reach the performance described above, the RP2350 is overclocked to 504 MHz with the core voltage raised to 1.65 V (the default is 1.10 V). Both values are required, not precautionary: 504 MHz hard-faults at 1.60 V. Note that 1.65 V is well past the RP2350's rated range — the Pico SDK caps the regulator at 1.30 V and this port explicitly lifts that limit. This is a significant overclock and overvolt that trades chip lifetime for speed.
 
 Use this software at your own risk. I am not responsible in any way for damage to your board and/or connected peripherals caused by using this software, nor for damage caused by incorrect wiring or voltages.
 
