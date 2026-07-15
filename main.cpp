@@ -628,9 +628,11 @@ static bool snes9x_load_rom_from_psram(uintptr_t psram_ptr, size_t romsize)
         return false;
     }
 
-    /* Reject special-chip ROMs explicitly — we don't emulate them. */
+    /* Reject special-chip ROMs we don't emulate. DSP-1/2/3/4 IS emulated
+     * (snes9x/src/dsp.c), so those carts (Super Mario Kart, Pilotwings, ...)
+     * are allowed through. SuperFX stays rejected until the GSU is ported. */
     if (Settings.SuperFX || Settings.SA1 || Settings.SDD1 || Settings.C4 ||
-        Settings.DSP || Settings.SPC7110 || Settings.OBC1 || Settings.SRTC) {
+        Settings.SPC7110 || Settings.OBC1 || Settings.SRTC) {
         snprintf(ErrorMessage, ERRORMESSAGESIZE,
                  "Special chip ROMs not supported.");
         return false;
