@@ -70,7 +70,7 @@ extern "C" uint16_t *s9x_port_fb_window;
 extern uint16_t *g_snes_private_screen;
 #endif
 
-#define EMULATOR_CLOCKFREQ_KHZ 378000   /* RP2350 overclock — 378 MHz */
+#define EMULATOR_CLOCKFREQ_KHZ 504000   /* RP2350 overclock — 504 MHz (experiment; was 378) */
 #define AUDIOBUFFERSIZE 1024
 /* 44100, matching everything downstream: the TLV320 DAC's register
  * script is written for 44.1 kHz (its BCLK-fed PLL runs below spec at
@@ -1020,17 +1020,32 @@ int main()
     romName = selectedRom;
     ErrorMessage[0] = selectedRom[0] = 0;
 
-    /* 378 MHz needs 1.60 V on this Fruit Jam board. 1.30 V looked
-     * stable but was marginal: it booted and ran, then hard-faulted
-     * with corrupted core1 control flow (garbage PC, pristine memory)
-     * ~14 s into a game once PIO USB + TLV320 + core1 blit/mix load
-     * peaked — raising VREG to 1.60 V eliminated the crashes. Higher
-     * overclocks (432, 480, 504) were tried on this board and all
-     * hard-faulted under sustained emulator load even with relaxed QMI
-     * timing for flash and PSRAM. The SRAM-code / PSRAM-buffer /
-     * -O3 / IAPU+Memory.Map-in-SRAM wins are independent of the
-     * overclock and remain in place. */
-    Frens::setClocksAndStartStdio(CPUFreqKHz, VREG_VOLTAGE_1_60);
+    /* 504 MHz @ 1.65 V on this Fruit Jam board. Hardware-verified: menu,
+     * HSTX and PIO USB all fine, no hard fault under sustained load, and
+     * Super Mario World holds a stable 60 fps (was 54-57 at 378 MHz).
+     *
+     * History: 378 MHz needed 1.60 V here — 1.30 V booted and ran but was
+     * marginal, hard-faulting with corrupted core1 control flow (garbage PC,
+     * pristine memory) ~14 s into a game once PIO USB + TLV320 + core1
+     * blit/mix load peaked. 432/480/504 were tried back then and all
+     * hard-faulted under sustained load. That turned out NOT to be a voltage
+     * ceiling: setClocksAndStartStdio hard-coded the XIP flash divisor at 4,
+     * so flash tracked clk_sys and ran at 108/120/126 MHz at those clocks,
+     * far past what the QSPI part samples reliably. XIP traffic peaks under
+     * emulator load, which is why it looked like a load-correlated (i.e.
+     * voltage-ish) failure. pico_shared now scales that divisor with clk_sys
+     * (84 MHz flash at 504, unchanged 94.5 MHz at 378) and 504 is stable.
+     *
+     * Untested whether 1.60 V also suffices at 504 now that the flash timing
+     * is right — worth checking, since 1.65 V is well past the RP2350's
+     * rated range and only bought stability under the old (wrong) theory.
+     *
+     * Note this buys nothing for SuperFX: PSRAM is pinned at 126 MHz at both
+     * 378 and 504 (divisor ceil(clk/133MHz) absorbs the increase), and Star
+     * Fox is PSRAM-bandwidth-bound, so it sees no gain. Games that were just
+     * short of 60 (SMW) do benefit. See the GSU profiling notes in
+     * snes9x/src/fxemu.c and CMakeLists.txt. */
+    Frens::setClocksAndStartStdio(CPUFreqKHz, VREG_VOLTAGE_1_65);
     Frens::dumpHeapStats("startup");
 
     printf("==========================================================================================\n");
