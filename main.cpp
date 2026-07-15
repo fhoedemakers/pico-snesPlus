@@ -1036,9 +1036,13 @@ int main()
      * voltage-ish) failure. pico_shared now scales that divisor with clk_sys
      * (84 MHz flash at 504, unchanged 94.5 MHz at 378) and 504 is stable.
      *
-     * Untested whether 1.60 V also suffices at 504 now that the flash timing
-     * is right — worth checking, since 1.65 V is well past the RP2350's
-     * rated range and only bought stability under the old (wrong) theory.
+     * 1.65 V is REQUIRED, not precautionary: 504 MHz hard-faults at 1.60 V
+     * even with the flash divisor scaled (tested 2026-07-15). Voltage is the
+     * real ceiling on this board — 1.30 -> 1.60 unlocked 378, 1.60 -> 1.65
+     * unlocked 504. Note 1.65 V is well past the RP2350's rated range (the
+     * SDK caps VREG_VOLTAGE_MAX at 1.30; the port calls
+     * vreg_disable_voltage_limit()), so this trades chip lifetime for clock.
+     * Do not lower it expecting 504 to hold.
      *
      * Note this buys nothing for SuperFX: PSRAM is pinned at 126 MHz at both
      * 378 and 504 (divisor ceil(clk/133MHz) absorbs the increase), and Star
