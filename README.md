@@ -13,11 +13,11 @@ It is a sister project of these emulators, with which it shares its menu, displa
 
 ## Status and limitations
 
-Please read this section before using the emulator. SNES emulation is demanding for this class of hardware, and this project has real limitations:
+Please read this section before using the emulator. SNES emulation is demanding for this class of hardware; much of the library runs well, but there are real limitations:
 
 - **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, and S-RTC games run; SA-1, S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.
-- **NTSC (60 Hz) games do not run at a solid 60 fps.** Frame skipping (one rendered frame out of three) is enabled by default and can be turned off in the settings menu, at the cost of speed. **PAL (50 Hz) games run better** and generally come closer to full speed.
-- **Audio is functional but has occasional dropouts** when emulation cannot keep up with real-time sample playback.
+- **Games generally run at full speed (60 fps).** Demanding Super FX titles are the main exception; see [Expansion chips](#expansion-chips).
+- **Frame skipping is still enabled by default**, rendering one frame in three. It is no longer needed on most games — turning it off in the settings menu renders every frame, which looks considerably smoother, and full speed generally still holds. Leave it on for the heaviest titles.
 - **Battery saves are persisted, but save states are not.** In-game saves that a cartridge writes to its battery-backed SRAM are stored on the SD card under `/SAVES/SNES/`. The save is written when you quit the game to the ROM menu (Select + Start → Quit game), so **quit to the menu before powering off** to keep your progress — pulling power mid-game loses everything since the last quit. There is no separate save-state feature. Games that use password systems are unaffected.
 - Development and testing take place primarily on the Adafruit Fruit Jam. The other supported boards receive less testing.
 
