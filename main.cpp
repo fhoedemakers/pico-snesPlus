@@ -633,11 +633,16 @@ static bool snes9x_load_rom_from_psram(uintptr_t psram_ptr, size_t romsize)
         return false;
     }
 
-    /* Reject special-chip ROMs we don't emulate. DSP-1/2/3/4 (dsp.c) and
-     * SuperFX/GSU (fxinst.c/fxemu.c) ARE emulated, so those carts (Super Mario
-     * Kart, Pilotwings, Star Fox, Yoshi's Island, ...) are allowed through. */
-    if (Settings.SA1 || Settings.SDD1 || Settings.C4 ||
-        Settings.SPC7110 || Settings.OBC1 || Settings.SRTC) {
+    /* Reject special-chip ROMs we don't emulate. Emulated and allowed through:
+     * DSP-1/2/3/4 (dsp.c), SuperFX/GSU (fxinst.c/fxemu.c), C4 (c4.c/c4emu.c),
+     * OBC1 (obc1.c) and S-RTC (srtc.c) -- so Super Mario Kart, Pilotwings,
+     * Star Fox, Yoshi's Island, Mega Man X2/X3, Metal Combat and Dai Kaijuu
+     * Monogatari II all load. SA-1 and the S-DD1/SPC7110 decompressors have no
+     * implementation here (declared-only), so those carts still bail out.
+     * Note: SETA (ST01x) and BS-X are equally unimplemented but cannot be
+     * tested for -- InitROM never sets Settings.SETA/BS, so such carts slip
+     * through and run without the chip. Detection would be needed first. */
+    if (Settings.SA1 || Settings.SDD1 || Settings.SPC7110) {
         snprintf(ErrorMessage, ERRORMESSAGESIZE,
                  "Special chip ROMs not supported.");
         return false;
@@ -672,8 +677,10 @@ static void draw_fps_overlay(uint16_t *screen, int stride)
 /* -------------------------------------------------------------------------
  * Cartridge battery SRAM persistence. snes9x keeps the save in Memory.SRAM;
  * the real battery size is Memory.SRAMMask+1 when Memory.SRAMSize>0 (and there
- * is no battery when SRAMSize==0). SRTC/special-chip carts are rejected at load
- * so there is no RTC trailer to persist. Saves live in /SAVES/SNES/<rom>.SAV.
+ * is no battery when SRAMSize==0). S-RTC carts now load, but snes9x only writes
+ * its RTC trailer past the battery in S9xSRTCPreSaveState, which this port never
+ * calls (no save states) -- so there is still no trailer to persist, and the
+ * in-game clock restarts each power cycle. Saves live in /SAVES/SNES/<rom>.SAV.
  *
  * FIL (~550 B, embeds a 512 B sector window) and FILINFO (~276 B) are far too
  * large for the 3 KB core0 stack (PICO_STACK_SIZE) — allocate them in PSRAM via

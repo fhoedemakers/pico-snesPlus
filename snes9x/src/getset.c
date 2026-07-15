@@ -42,10 +42,11 @@ uint8_t S9xGetByte(uint32_t Address)
       return Memory.SRAM[((Address & 0x7fff) - 0x6000 + ((Address & 0xf0000) >> 3)) & Memory.SRAMMask];
    case MAP_C4:
       return S9xGetC4(Address & 0xffff);
+   case MAP_OBC_RAM:
+      return GetOBC1(Address & 0xFFFF);
    case MAP_BWRAM:
    case MAP_SPC7110_ROM:
    case MAP_SPC7110_DRAM:
-   case MAP_OBC_RAM:
    case MAP_SETA_DSP:
    case MAP_SETA_RISC:
    default:
@@ -102,10 +103,11 @@ uint16_t S9xGetWord(uint32_t Address)
       return *(Memory.SRAM + (((Address & 0x7fff) - 0x6000 + ((Address & 0xf0000) >> 3)) & Memory.SRAMMask)) | (*(Memory.SRAM + ((((Address + 1) & 0x7fff) - 0x6000 + (((Address + 1) & 0xf0000) >> 3)) & Memory.SRAMMask)) << 8);
    case MAP_C4:
       return S9xGetC4(Address & 0xffff) | (S9xGetC4((Address + 1) & 0xffff) << 8);
+   case MAP_OBC_RAM:
+      return GetOBC1(Address & 0xFFFF) | (GetOBC1((Address + 1) & 0xFFFF) << 8);
    case MAP_BWRAM:
    case MAP_SPC7110_ROM:
    case MAP_SPC7110_DRAM:
-   case MAP_OBC_RAM:
    case MAP_SETA_DSP:
    case MAP_SETA_RISC:
    default:
