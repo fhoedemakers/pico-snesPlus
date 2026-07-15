@@ -300,13 +300,25 @@ int32_t FxEmulate(uint32_t nInstructions)
 /* S9x glue: run the GSU for the current scanline when it has been started
  * (GO flag set) and granted the bus (SCMR RON|RAN). Called once per scanline
  * from S9xDoHBlankProcessing (cpuexec.c). Declared in ppu.h. */
-/* Bring-up diagnostics: 1 = print GSU run stats every ~1.3 s. Used to debug
- * the Star Fox black screen (idle GSU); keep available, off by default. */
+/* Bring-up diagnostics: 1 = print GSU state every ~1.3 s. Used to debug the
+ * Star Fox black screen (idle GSU); keep available, off by default.
+ * Note: FxEmulate's return is useless as an instruction count in the
+ * run-to-STOP mode — fx_stop() zeroes vInstCount, so it always reports
+ * nInstructions. Use PROFILE_BUCKETS below for cost instead. */
 #define SUPERFX_DEBUG 0
 
 #if SUPERFX_DEBUG
 #include <stdio.h>
-static uint32_t sfx_calls, sfx_runs, sfx_instr, sfx_sfr_seen;
+static uint32_t sfx_calls, sfx_runs, sfx_sfr_seen;
+#endif
+
+#if PROFILE_BUCKETS
+#include "pico/time.h"
+/* GSU wall-clock, accumulated over the fps window and read+reset by the
+ * profiling line in main.cpp. Instrumented here rather than at the cpuexec
+ * call site because ppu.c's register handler also kicks the GSU. */
+uint32_t g_prof_us_sfx;
+uint32_t g_prof_sfx_runs;
 #endif
 
 void S9xSuperFXExec(void)
@@ -320,9 +332,8 @@ void S9xSuperFXExec(void)
     * from "GO set but SCMR gate failed". */
    sfx_sfr_seen |= Memory.FillRAM[0x3000 + GSU_SFR];
    if ((sfx_calls % 20000) == 0) /* ~every 1.3 s of emulated scanlines */
-      printf("SFX: calls=%lu runs=%lu instr=%lu | SFR=%02x(seen %02x) SCMR=%02x PBR=%02x R15=%04x\n",
+      printf("SFX: calls=%lu runs=%lu | SFR=%02x(seen %02x) SCMR=%02x PBR=%02x R15=%04x\n",
              (unsigned long) sfx_calls, (unsigned long) sfx_runs,
-             (unsigned long) sfx_instr,
              Memory.FillRAM[0x3000 + GSU_SFR], sfx_sfr_seen,
              Memory.FillRAM[0x3000 + GSU_SCMR],
              (unsigned) GSU.vPrgBankReg, (unsigned) GSU.avReg[15]);
@@ -333,25 +344,20 @@ void S9xSuperFXExec(void)
    {
       int32_t GSUStatus;
 #if SUPERFX_DEBUG
-      int32_t ran;
       sfx_runs++;
+#endif
+#if PROFILE_BUCKETS
+      uint32_t t0 = time_us_32();
 #endif
 
       if (!Settings.WinterGold || Settings.StarfoxHack)
-#if SUPERFX_DEBUG
-         ran = FxEmulate(~0);
-#else
          FxEmulate(~0);
-#endif
       else
-#if SUPERFX_DEBUG
-         ran = FxEmulate((Memory.FillRAM[0x3000 + GSU_CLSR] & 1) ? 700 : 350);
-#else
          FxEmulate((Memory.FillRAM[0x3000 + GSU_CLSR] & 1) ? 700 : 350);
-#endif
 
-#if SUPERFX_DEBUG
-      sfx_instr += (uint32_t) ran;
+#if PROFILE_BUCKETS
+      g_prof_us_sfx += time_us_32() - t0;
+      g_prof_sfx_runs++;
 #endif
 
       GSUStatus = Memory.FillRAM[0x3000 + GSU_SFR] |

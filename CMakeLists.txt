@@ -366,6 +366,32 @@ set(SNES9X_SRAM_HOT_FILES
     getset.c    # Get/Set helper inlines that didn't inline
     cpuexec.c   # S9xMainLoop / S9xDoHBlankProcessing
 )
+
+# A/B lever: move the SuperFX GSU interpreter (~52 KB) into SRAM.
+# Rationale: the GSU is ~38 % of emulation time on Star Fox. Its dispatch
+# tables are already in SRAM (.data, non-const), but fxinst.c's .text is in
+# flash — and on RP2350 the 16 KB XIP cache serves BOTH flash and PSRAM, so
+# the GSU streaming cart ROM out of PSRAM evicts its own interpreter code
+# from that cache on every fetch.
+#
+# MEASURED 2026-07-15 (Star Fox training, PROFILE_BUCKETS), and it is a
+# WASH — left OFF:
+#   OFF: total emu ~1038 ms/s, sfx ~399 ms/s, rest ~639 ms/s, ~31.7 fps
+#   ON : total emu ~1019 ms/s, sfx ~337 ms/s, rest ~682 ms/s, ~32.1 fps
+# The GSU really does get ~15 % faster (the cache contention is real), but
+# the 52 KB comes out of an SRAM heap arena that runs ~1 KB free, spilling
+# buffers to PSRAM and taxing everything else by the same amount (mainS,
+# pure CPU time, jumps 7.5 -> 21 ms/frame). Only worth revisiting if SRAM
+# is freed up elsewhere first.
+option(SUPERFX_IN_SRAM "Place the SuperFX GSU interpreter in SRAM (A/B; measured a wash)" OFF)
+if(SUPERFX_IN_SRAM)
+    list(APPEND SNES9X_SRAM_HOT_FILES
+        fxinst.c    # GSU opcode bodies — every GSU instruction
+        fxemu.c     # FxEmulate / fx_run driver
+    )
+    message(STATUS "SUPERFX_IN_SRAM=1 — GSU interpreter moved to SRAM (~52 KB)")
+endif()
+
 foreach(_src IN LISTS SNES9X_SRAM_HOT_FILES)
     get_filename_component(_stem "${_src}" NAME_WE)
     set_source_files_properties(snes9x/src/${_src} PROPERTIES
@@ -384,6 +410,8 @@ endforeach()
 # loop unrolling, and IPA cloning, which pay off heavily on branch-heavy
 # dispatch tables and per-pixel rasterizers. Code-size growth (~10-20 %)
 # is absorbed by SRAM headroom.
+# Measured 2026-07-15 on fxinst.c (SuperFX GSU interpreter): -O3 made no
+# difference at all — sfx=/fps identical to -O2 on Star Fox. Left off.
 # set(SNES9X_O3_FILES
 #     cpuops.c    # 65816 dispatch
 #     spc700.c    # APUExecute
