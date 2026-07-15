@@ -9,6 +9,14 @@
 #include "dma.h"
 #include "srtc.h"
 #include "obc1.h"
+#include "fxemu.h"
+
+extern FxInit_s SuperFX;
+
+void S9xResetSuperFX(void)
+{
+   FxReset(&SuperFX);
+}
 
 void S9xResetCPU()
 {
@@ -67,6 +75,10 @@ static void CommonS9xReset()
    S9xResetAPU();
    if (Settings.DSP)
       S9xResetDSP();
+   /* After the FillRAM memset above: FxReset writes the GSU register space
+    * into FillRAM[0x3000]; S9xResetPPU then preserves 0x3000-0x32ff. */
+   if (Settings.SuperFX)
+      S9xResetSuperFX();
    if (Settings.OBC1)
       ResetOBC1();
    if (Settings.C4)

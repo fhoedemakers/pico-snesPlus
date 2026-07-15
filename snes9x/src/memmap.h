@@ -54,6 +54,9 @@ void SRAM1024KLoROMMap(void);
 void SufamiTurboLoROMMap(void);
 void HiROMMap(void);
 void SuperFXROMMap(void);
+void S9xInitSuperFX(void);
+void S9xResetSuperFX(void);
+void DetectSuperFxRamSize(void);
 void TalesROMMap(bool);
 void AlphaROMMap(void);
 void SA1ROMMap(void);
@@ -83,7 +86,10 @@ enum
 enum
 {
    RAM_SIZE = 0x20000,
-   SRAM_SIZE = 0x10000, // 0x20000,
+   /* Back to the upstream 128 KB: SuperFX maps GSU RAM bank 71 at
+    * Memory.SRAM + 0x10000 (SuperFXROMMap), and FxReset derives nRamBanks
+    * from this. Memory.SRAM lives in PSRAM, so the extra 64 KB is free. */
+   SRAM_SIZE = 0x20000,
    VRAM_SIZE = 0x10000,
    FILLRAM_SIZE = 0x8000,
 };

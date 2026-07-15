@@ -9,6 +9,7 @@
 #include "dma.h"
 #include "gfx.h"
 #include "soundux.h"
+#include "fxemu.h"
 
 SICPU ICPU;
 SCPUState CPU;
@@ -27,6 +28,10 @@ int32_t OpAddress = 0;
 CMemory Memory;
 
 uint8_t OpenBus = 0;
+
+/* SuperFX (GSU) link struct — set up by S9xInitSuperFX (memmap.c), consumed
+ * by FxReset. */
+FxInit_s SuperFX;
 
 SPPU PPU;
 InternalPPU IPPU;

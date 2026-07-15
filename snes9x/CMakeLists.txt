@@ -10,6 +10,8 @@ target_sources(snes9x_core INTERFACE
     src/cpuops.c
     src/dma.c
     src/dsp.c
+    src/fxemu.c
+    src/fxinst.c
     src/getset.c
     src/gfx.c
     src/globals.c

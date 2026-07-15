@@ -140,6 +140,9 @@ static void Sanitize(char* str, size_t bufsize)
  * NOT allocated here — the caller (main.cpp) populates it from PSRAM after
  * reading the ROM file via FatFS, then calls LoadROM(NULL). */
 #include "port_alloc.h"
+#include "fxemu.h"
+
+extern FxInit_s SuperFX;
 
 bool S9xInitMemory(void)
 {
@@ -540,7 +543,9 @@ void InitROM(bool Interleaved)
       if ((Memory.ROMType & 0xf0) == 0xf0 && (strncmp(Memory.ROMName, "MEGAMAN X", 9) == 0 || strncmp(Memory.ROMName, "ROCKMAN X", 9) == 0))
          Settings.C4 = !Settings.ForceNoC4;
 
-      if ((Memory.ROMSpeed & ~0x10) == 0x25)
+      if (Settings.SuperFX)
+         SuperFXROMMap();
+      else if ((Memory.ROMSpeed & ~0x10) == 0x25)
          TalesROMMap(Interleaved);
       else if (Memory.ExtendedFormat)
          JumboLoROMMap(Interleaved);
@@ -579,6 +584,11 @@ void InitROM(bool Interleaved)
    }
 
    Memory.SRAMMask = Memory.SRAMSize ? ((1 << (Memory.SRAMSize + 3)) * 128) - 1 : 0;
+
+   printf("ROM: type=%02x speed=%02x HiROM=%d size=%u SRAMSize=%d | SuperFX=%d DSP=%d\n",
+          Memory.ROMType, Memory.ROMSpeed, (int) Memory.HiROM,
+          (unsigned) Memory.CalculatedSize, (int) Memory.SRAMSize,
+          (int) Settings.SuperFX, (int) Settings.DSP);
 
    /*
    if (!Memory.CalculatedChecksum)
@@ -850,6 +860,113 @@ void LoROMMap(void)
 
    MapRAM();
    WriteProtectROM();
+}
+
+/* SuperFX save/work RAM size, from the ROM header (ported from CATSFC). */
+void DetectSuperFxRamSize(void)
+{
+   if (Memory.ROM[0x7FDA] == 0x33)
+      Memory.SRAMSize = Memory.ROM[0x7FBD];
+   else if (strncmp(Memory.ROMName, "STAR FOX 2", 10) == 0)
+      Memory.SRAMSize = 6;
+   else
+      Memory.SRAMSize = 5;
+}
+
+/* Set up the GSU<->SNES link struct. Pico port: pvRom points straight at the
+ * linear cart ROM (Memory.ROM); the LoROM 32 KB->64 KB fold is done in the
+ * ROM/PRGBANK macros via FX_BANKMASK (see fxinst.h / FxReset in fxemu.c), so
+ * no ~6 MB mirrored ROM buffer is allocated. nRamBanks is clamped to what the
+ * 64 KB Memory.SRAM buffer can hold (1 bank); larger-SRAM GSU-2 titles would
+ * need SRAM_SIZE grown first. */
+void S9xInitSuperFX(void)
+{
+   uint32_t nrambanks;
+
+   SuperFX.pvRegisters = &Memory.FillRAM[0x3000];
+   SuperFX.pvRam        = Memory.SRAM;
+   SuperFX.pvRom        = (uint8_t*) Memory.ROM;
+   SuperFX.nRomBanks    = Memory.CalculatedSize >> 15; /* 32 KB banks */
+
+   nrambanks = SRAM_SIZE >> 16;                        /* 64 KB banks that fit */
+   SuperFX.nRamBanks = nrambanks ? nrambanks : 1;
+
+   printf("SFX init: nRomBanks=%u(32K) nRamBanks=%u rom=%p ram=%p regs=%p\n",
+          (unsigned) SuperFX.nRomBanks, (unsigned) SuperFX.nRamBanks,
+          (void*) SuperFX.pvRom, (void*) SuperFX.pvRam,
+          (void*) SuperFX.pvRegisters);
+}
+
+/* SuperFX CPU-side memory map. NOTE: this cannot reuse LoROMMap() — a SuperFX
+ * cart exposes banks 40->7f as a *linear 64 KB* ROM image (c << 12), whereas
+ * LoROMMap lays those out in the LoROM 32 KB style (c << 11). The GSU program,
+ * its data and most game assets live in those banks, so getting this wrong
+ * boots the CPU (audio plays) but leaves the GSU unprogrammed -> black screen. */
+void SuperFXROMMap(void)
+{
+   int32_t c;
+   int32_t i;
+
+   DetectSuperFxRamSize();
+
+   /* Banks 00->3f and 80->bf */
+   for (c = 0; c < 0x400; c += 16)
+   {
+      Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
+      Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
+
+      Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
+      Memory.Map [c + 3] = Memory.Map [c + 0x803] = (uint8_t*) MAP_PPU;
+      Memory.Map [c + 4] = Memory.Map [c + 0x804] = (uint8_t*) MAP_CPU;
+      Memory.Map [c + 5] = Memory.Map [c + 0x805] = (uint8_t*) MAP_CPU;
+
+      /* GSU work RAM window at 6000-7fff */
+      Memory.Map [c + 6] = Memory.Map [c + 0x806] = Memory.SRAM - 0x6000;
+      Memory.Map [c + 7] = Memory.Map [c + 0x807] = Memory.SRAM - 0x6000;
+      Memory.MapInfo[c + 6].Type = Memory.MapInfo[c + 0x806].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 7].Type = Memory.MapInfo[c + 0x807].Type = MAP_TYPE_RAM;
+
+      for (i = c + 8; i < c + 16; i++)
+      {
+         Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
+      }
+   }
+
+   /* Banks 40->7f and c0->ff: linear 64 KB ROM image */
+   for (c = 0; c < 0x400; c += 16)
+   {
+      for (i = c; i < c + 16; i++)
+      {
+         Memory.Map [i + 0x400] = Memory.Map [i + 0xc00] = &Memory.ROM [(c << 12) % Memory.CalculatedSize];
+         Memory.MapInfo[i + 0x400].Type = Memory.MapInfo[i + 0xc00].Type = MAP_TYPE_ROM;
+      }
+   }
+
+   /* Banks 7e->7f, WRAM (overrides the ROM fill above) */
+   for (c = 0; c < 16; c++)
+   {
+      Memory.Map [c + 0x7e0] = Memory.RAM;
+      Memory.Map [c + 0x7f0] = Memory.RAM + 0x10000;
+      Memory.MapInfo[c + 0x7e0].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x7f0].Type = MAP_TYPE_RAM;
+   }
+
+   /* Banks 70->71, GSU RAM. Bank 71 lands at Memory.SRAM + 0x10000, so this
+    * requires SRAM_SIZE >= 0x20000 (see memmap.h). */
+   for (c = 0; c < 32; c++)
+   {
+      Memory.Map [c + 0x700] = Memory.SRAM + (((c >> 4) & 1) << 16);
+      Memory.MapInfo[c + 0x700].Type = MAP_TYPE_RAM;
+   }
+
+   WriteProtectROM();
+
+   /* Wire the GSU link struct now that ROM/SRAM/FillRAM and CalculatedSize
+    * are all valid; FxReset (from S9xReset) consumes it. */
+   S9xInitSuperFX();
 }
 
 void DSPMap(void)

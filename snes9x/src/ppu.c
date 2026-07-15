@@ -8,6 +8,56 @@
 #include "dma.h"
 #include "display.h"
 #include "srtc.h"
+#include "fxemu.h"
+
+/* GSU (SuperFX) SFR GO flag — mirrors FLG_G in fxinst.h, which isn't
+ * included here because its ROM()/RAM() macros would collide. */
+#define SFX_FLG_G 0x20
+
+/* CPU-side write into the GSU register window 0x3000-0x32ff. Ported from
+ * CATSFC S9xSetSuperFX (ppu.c): several registers have side effects, the
+ * critical one being 0x301f (R15 high byte) — writing it is what starts
+ * the GSU. A plain store here leaves the chip idle forever (black screen,
+ * audio still playing, SFR stuck at 0). */
+static void S9xSetSuperFX(uint8_t Byte, uint16_t Address)
+{
+   uint8_t old_fill_ram;
+
+   if (!Settings.SuperFX)
+      return; /* window is unbacked without the chip: drop the write */
+
+   old_fill_ram = Memory.FillRAM[Address];
+   Memory.FillRAM[Address] = Byte;
+
+   switch (Address)
+   {
+      case 0x3030: /* SFR low: GO flag transitions */
+         if ((old_fill_ram ^ Byte) & SFX_FLG_G)
+         {
+            if (Byte & SFX_FLG_G)
+               S9xSuperFXExec();
+            else
+               FxFlushCache();
+         }
+         break;
+      case 0x3034: /* PBR   */
+      case 0x3036: /* ROMBR */
+         Memory.FillRAM[Address] &= 0x7f;
+         break;
+      case 0x3038: /* SCBR: screen base changed */
+         fx_dirtySCBR();
+         break;
+      case 0x303c: /* RAMBR */
+         fx_updateRamBank(Byte);
+         break;
+      case 0x301f: /* R15 high byte: kick the GSU */
+         Memory.FillRAM[0x3030] |= SFX_FLG_G;
+         S9xSuperFXExec();
+         break;
+      default:
+         break;
+   }
+}
 
 extern const uint8_t mul_brightness [16][32];
 
@@ -614,7 +664,10 @@ void S9xSetPPU(uint8_t Byte, uint16_t Address)
       if (Address == 0x2801 && Settings.SRTC) /* Dai Kaijyu Monogatari II */
          S9xSetSRTC(Byte, Address);
       else if (Address >= 0x3000 && Address < 0x3300)
+      {
+         S9xSetSuperFX(Byte, Address);
          return;
+      }
    }
    Memory.FillRAM[Address] = Byte;
 }
