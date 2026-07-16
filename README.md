@@ -15,11 +15,11 @@ It is a sister project of these emulators, with which it shares its menu, displa
 
 Please read this section before using the emulator. SNES emulation is demanding for this class of hardware; much of the library runs well, but there are real limitations:
 
-- **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, and S-RTC games run; SA-1, S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.
+- **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, SA-1 and S-RTC games run;  S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.
 - **Games generally run at full speed (60 fps).** Demanding Super FX titles are the main exception; see [Expansion chips](#expansion-chips).
 - **Frame skipping is still enabled by default**, rendering one frame in three. It is no longer needed on most games — turning it off in the settings menu renders every frame, which looks considerably smoother, and full speed generally still holds. Leave it on for the heaviest titles.
-- **Battery saves are persisted, but save states are not.** In-game saves that a cartridge writes to its battery-backed SRAM are stored on the SD card under `/SAVES/SNES/`. The save is written when you quit the game to the ROM menu (Select + Start → Quit game), so **quit to the menu before powering off** to keep your progress — pulling power mid-game loses everything since the last quit. There is no separate save-state feature. Games that use password systems are unaffected.
-- Development and testing take place primarily on the Adafruit Fruit Jam. The other supported boards receive less testing.
+- **Battery saves are persisted** In-game saves that a cartridge writes to its battery-backed SRAM are stored on the SD card under `/SAVES/SNES/`. The save is written when you quit the game to the ROM menu (Select + Start → Quit game), so **quit to the menu before powering off** to keep your progress — pulling power mid-game loses everything since the last quit. There is no separate save-state feature. Games that use password systems are unaffected.
+- Development and testing take place primarily on the Adafruit Fruit Jam. The other supported boards need still to be tested.
 
 ***
 
@@ -33,6 +33,7 @@ Many SNES cartridges carry an extra chip that the console itself does not have. 
 | DSP-2 / DSP-3 / DSP-4 | Emulated | Dungeon Master, SD Gundam GX, Top Gear 3000 |
 | Super FX (GSU-1 / GSU-2) | Emulated, **speed varies — see below** | Star Fox, Yoshi's Island, Stunt Race FX, Doom |
 | C4 | Emulated | Mega Man X2, Mega Man X3 |
+| SA-1 | Super Mario RPG, Kirby Super Star, Kirby's Dream Land 3 |
 | OBC1 | Emulated | Metal Combat: Falcon's Revenge |
 | S-RTC | Emulated | Dai Kaijuu Monogatari II |
 
@@ -40,7 +41,6 @@ These are **not** emulated. Such ROMs are detected at load time and refused with
 
 | Chip | Example games |
 | --- | --- |
-| SA-1 | Super Mario RPG, Kirby Super Star, Kirby's Dream Land 3 |
 | S-DD1 | Star Ocean, Street Fighter Alpha 2 |
 | SPC7110 | Far East of Eden Zero, Momotarou Dentetsu Happy |
 
@@ -50,8 +50,9 @@ Two more chips, SETA (ST010/ST011) and BS-X, are also unimplemented but are not 
 
 The Super FX chip is emulated correctly, but **whether a game is playable depends on how hard it leans on the chip**:
 
-- **Yoshi's Island (GSU-2) runs fine** and is the good case. It uses the chip mostly for sprite and effect work on top of ordinary PPU rendering.
+- **Yoshi's Island (GSU-2) runs decently** and is the good case. It uses the chip mostly for sprite and effect work on top of ordinary PPU rendering.
 - **Star Fox renders correctly but is too slow to play**, landing around 30 fps rather than 60. It draws its entire 3D world through the chip, and the GSU accounts for roughly a third of all emulation time.
+- Other Super FX games are not tested.
 
 The bottleneck is PSRAM bandwidth, not the CPU clock, so the overclock described below does not help these games — Star Fox runs at the same speed at 504 MHz as it did at 378 MHz. Other Super FX titles fall somewhere between these two cases; try them and see.
 
