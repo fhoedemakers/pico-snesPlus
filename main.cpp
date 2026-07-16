@@ -812,10 +812,18 @@ static void run_emulator(void)
 #endif
             int r = showSettingsMenu(true);
             if (r == 3) {
-                /* Quit game — back to the ROM menu. Leave the core1
-                 * mixer parked: main() is about to tear down the
-                 * APU/sound state it reads. */
-                return;
+                /* Quit game. Instead of returning to main()'s in-place
+                 * teardown + menu re-entry (S9xDeinit*, core1 park/resume,
+                 * wav-player reset, screen-mode switch) — a fragile sequence
+                 * that intermittently core1-hardfaults at the 504 MHz OC
+                 * margin (undefined-instruction fetch glitch during the
+                 * transition) — flush the battery save and hard-reboot to a
+                 * clean boot + fresh ROM menu. The mixer is already parked;
+                 * watchdog_reboot resets both cores and all peripherals, so
+                 * there is no teardown to get wrong. */
+                snes_save_sram();
+                watchdog_reboot(0, 0, 0);
+                while (true) tight_loop_contents();   /* not reached */
             }
             if (r == 5) {
                 /* Reset game. Do it while the mixer is still parked —
@@ -1099,7 +1107,11 @@ int main()
     g_settings_visibility = g_settings_visibility_snes;
     g_available_screen_modes = g_available_screen_modes_snes;
 
-    bool showSplash = true;
+    /* Skip the splash when we got here via the quit-game reboot
+     * (watchdog_reboot in run_emulator) — it should feel like a snappy return
+     * to the ROM menu, not a fresh power-on. A cold/power-on boot still shows
+     * it (watchdog_caused_reboot() is false then). */
+    bool showSplash = !watchdog_caused_reboot();
 
     while (true) {
         if (selectedRom[0] == 0) {
