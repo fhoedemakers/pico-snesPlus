@@ -44,8 +44,13 @@ typedef struct
    uint32_t      WaitCounter;
    uint8_t*      WaitByteAddress1;
    uint8_t*      WaitByteAddress2;
-   uint8_t*      Map      [MEMMAP_NUM_BLOCKS];
-   uint8_t*      WriteMap [MEMMAP_NUM_BLOCKS];
+   /* Pico port: these were inline uint8_t*[MEMMAP_NUM_BLOCKS] arrays = 16 KB
+    * each, so the static SSA1 struct cost 32 KB of SRAM for EVERY game even
+    * though only SA-1 carts use them. Now pointers, allocated on demand in
+    * S9xSA1Init (SA-1 carts only) — see sa1.c. SA1.Map[i] indexing is
+    * unchanged. */
+   uint8_t**     Map;
+   uint8_t**     WriteMap;
    int16_t       op1;
    int16_t       op2;
    int           arithmetic_op; /* For savestate compatibility can't change to int32_t */

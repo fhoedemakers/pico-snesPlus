@@ -242,6 +242,12 @@ void S9xDeinitMemory(void)
    port_alloc_free(Memory.Map);     Memory.Map = NULL;
    port_alloc_free(Memory.MapInfo); Memory.MapInfo = NULL;
 
+   /* SA-1 maps (allocated on demand in SA1ROMMap for SA-1 carts only).
+    * NULL-safe, so a no-op for non-SA-1 games. Freeing here means switching
+    * from an SA-1 cart back to a normal one reclaims the 32 KB. */
+   port_alloc_free(SA1.Map);        SA1.Map = NULL;
+   port_alloc_free(SA1.WriteMap);   SA1.WriteMap = NULL;
+
    port_alloc_free(IPPU.ScreenColors); IPPU.ScreenColors = NULL;
    port_alloc_free(IPPU.TileCached);   IPPU.TileCached = NULL;
    port_alloc_free(IPPU.TileCache);    IPPU.TileCache = NULL;
@@ -996,6 +1002,24 @@ void SA1ROMMap(void)
     * which has no equivalent here). Allocate once, reuse across ROM loads. */
    if (!SA1CharDMABuffer)
       SA1CharDMABuffer = (uint8_t*) port_alloc_psram(0x10000);
+
+   /* Pico port: SA1.Map/WriteMap (16 KB each) are allocated on demand here —
+    * this is the first code to touch them and only runs for SA-1 carts. They
+    * used to be inline arrays in the SSA1 struct, costing 32 KB of static
+    * SRAM for EVERY game (which pushed the render strips into PSRAM). SRAM-
+    * first with a PSRAM fallback, like Memory.Map. Allocate once, reuse. */
+   if (!SA1.Map)
+   {
+      SA1.Map = (uint8_t**) port_alloc_sram(MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
+      if (!SA1.Map)
+         SA1.Map = (uint8_t**) port_alloc_psram(MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
+   }
+   if (!SA1.WriteMap)
+   {
+      SA1.WriteMap = (uint8_t**) port_alloc_sram(MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
+      if (!SA1.WriteMap)
+         SA1.WriteMap = (uint8_t**) port_alloc_psram(MEMMAP_NUM_BLOCKS * sizeof(uint8_t*));
+   }
 
    /* Banks 00->3f and 80->bf (main-CPU view) */
    for (c = 0; c < 0x400; c += 16)
