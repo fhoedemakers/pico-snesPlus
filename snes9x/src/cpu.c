@@ -10,6 +10,7 @@
 #include "srtc.h"
 #include "obc1.h"
 #include "fxemu.h"
+#include "sa1.h"
 
 extern FxInit_s SuperFX;
 
@@ -81,6 +82,8 @@ static void CommonS9xReset()
       S9xResetSuperFX();
    if (Settings.OBC1)
       ResetOBC1();
+   if (Settings.SA1)
+      S9xSA1Init();
    if (Settings.C4)
       S9xInitC4();
 }

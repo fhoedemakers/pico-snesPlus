@@ -635,14 +635,14 @@ static bool snes9x_load_rom_from_psram(uintptr_t psram_ptr, size_t romsize)
 
     /* Reject special-chip ROMs we don't emulate. Emulated and allowed through:
      * DSP-1/2/3/4 (dsp.c), SuperFX/GSU (fxinst.c/fxemu.c), C4 (c4.c/c4emu.c),
-     * OBC1 (obc1.c) and S-RTC (srtc.c) -- so Super Mario Kart, Pilotwings,
-     * Star Fox, Yoshi's Island, Mega Man X2/X3, Metal Combat and Dai Kaijuu
-     * Monogatari II all load. SA-1 and the S-DD1/SPC7110 decompressors have no
-     * implementation here (declared-only), so those carts still bail out.
-     * Note: SETA (ST01x) and BS-X are equally unimplemented but cannot be
-     * tested for -- InitROM never sets Settings.SETA/BS, so such carts slip
-     * through and run without the chip. Detection would be needed first. */
-    if (Settings.SA1 || Settings.SDD1 || Settings.SPC7110) {
+     * OBC1 (obc1.c), S-RTC (srtc.c) and SA-1 (sa1.c/sa1cpu.c) -- so Super Mario
+     * Kart, Pilotwings, Star Fox, Yoshi's Island, Mega Man X2/X3, Metal Combat,
+     * Dai Kaijuu Monogatari II, Super Mario RPG and Kirby Super Star all load.
+     * The S-DD1/SPC7110 decompressors have no implementation here (declared-
+     * only), so those carts still bail out. Note: SETA (ST01x) and BS-X are
+     * equally unimplemented but cannot be tested for -- InitROM never sets
+     * Settings.SETA/BS, so such carts slip through and run without the chip. */
+    if (Settings.SDD1 || Settings.SPC7110) {
         snprintf(ErrorMessage, ERRORMESSAGESIZE,
                  "Special chip ROMs not supported.");
         return false;

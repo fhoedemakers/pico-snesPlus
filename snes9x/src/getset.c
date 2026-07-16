@@ -45,6 +45,7 @@ uint8_t S9xGetByte(uint32_t Address)
    case MAP_OBC_RAM:
       return GetOBC1(Address & 0xFFFF);
    case MAP_BWRAM:
+      return Memory.BWRAM[(Address & 0x7fff) - 0x6000];
    case MAP_SPC7110_ROM:
    case MAP_SPC7110_DRAM:
    case MAP_SETA_DSP:
@@ -106,6 +107,7 @@ uint16_t S9xGetWord(uint32_t Address)
    case MAP_OBC_RAM:
       return GetOBC1(Address & 0xFFFF) | (GetOBC1((Address + 1) & 0xFFFF) << 8);
    case MAP_BWRAM:
+      return *(Memory.BWRAM + ((Address & 0x7fff) - 0x6000)) | (*(Memory.BWRAM + (((Address + 1) & 0x7fff) - 0x6000)) << 8);
    case MAP_SPC7110_ROM:
    case MAP_SPC7110_DRAM:
    case MAP_SETA_DSP:
@@ -161,6 +163,8 @@ void S9xSetByte(uint8_t Byte, uint32_t Address)
       }
       return;
    case MAP_BWRAM:
+      *(Memory.BWRAM + ((Address & 0x7fff) - 0x6000)) = Byte;
+      CPU.SRAMModified = true;
       return;
    case MAP_SA1RAM:
       *(Memory.SRAM + (Address & 0xffff)) = Byte;
@@ -245,6 +249,9 @@ void S9xSetWord(uint16_t Word, uint32_t Address)
       }
       return;
    case MAP_BWRAM:
+      *(Memory.BWRAM + ((Address & 0x7fff) - 0x6000)) = (uint8_t) Word;
+      *(Memory.BWRAM + (((Address + 1) & 0x7fff) - 0x6000)) = (uint8_t)(Word >> 8);
+      CPU.SRAMModified = true;
       return;
    case MAP_SA1RAM:
       *(Memory.SRAM + (Address & 0xffff)) = (uint8_t) Word;
@@ -283,7 +290,7 @@ uint8_t* GetBasePointer(uint32_t Address)
    case MAP_SETA_DSP:
       return Memory.SRAM;
    case MAP_BWRAM:
-      return NULL;
+      return Memory.BWRAM - 0x6000;
    case MAP_HIROM_SRAM:
       return Memory.SRAM - 0x6000;
    case MAP_C4:
@@ -311,7 +318,7 @@ uint8_t* S9xGetMemPointer(uint32_t Address)
    case MAP_LOROM_SRAM:
       return Memory.SRAM + (Address & 0xffff);
    case MAP_BWRAM:
-      return NULL;
+      return Memory.BWRAM - 0x6000 + (Address & 0xffff);
    case MAP_HIROM_SRAM:
       return Memory.SRAM - 0x6000 + (Address & 0xffff);
    case MAP_C4:
@@ -345,9 +352,9 @@ void S9xSetPCBase(uint32_t Address)
       case MAP_DSP:
          CPU.PCBase = Memory.FillRAM - 0x6000;
          break;
-      // case MAP_BWRAM:
-      //    CPU.PCBase = Memory.BWRAM - 0x6000;
-      //    break;
+      case MAP_BWRAM:
+         CPU.PCBase = Memory.BWRAM - 0x6000;
+         break;
       case MAP_HIROM_SRAM:
          CPU.PCBase = Memory.SRAM - 0x6000;
          break;

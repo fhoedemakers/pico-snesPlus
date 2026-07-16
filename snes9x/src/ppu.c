@@ -9,6 +9,7 @@
 #include "display.h"
 #include "srtc.h"
 #include "fxemu.h"
+#include "sa1.h"
 
 /* GSU (SuperFX) SFR GO flag — mirrors FLG_G in fxinst.h, which isn't
  * included here because its ROM()/RAM() macros would collide. */
@@ -661,6 +662,14 @@ void S9xSetPPU(uint8_t Byte, uint16_t Address)
    }
    else
    {
+      if (Settings.SA1)
+      {
+         if (Address >= 0x2200 && Address < 0x23ff)
+            S9xSetSA1(Byte, Address);
+         else
+            Memory.FillRAM[Address] = Byte;
+         return;
+      }
       if (Address == 0x2801 && Settings.SRTC) /* Dai Kaijyu Monogatari II */
          S9xSetSRTC(Byte, Address);
       else if (Address >= 0x3000 && Address < 0x3300)
@@ -895,6 +904,9 @@ uint8_t S9xGetPPU(uint16_t Address)
    }
    else
    {
+      if (Settings.SA1 && Address >= 0x2200)
+         return S9xGetSA1(Address);
+
       if (Settings.SRTC && Address == 0x2800)
          return S9xGetSRTC(Address);
 

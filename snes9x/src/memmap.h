@@ -115,6 +115,7 @@ typedef struct
    uint8_t* SRAM;
    uint8_t* FillRAM;
    uint8_t* C4RAM;
+   uint8_t* BWRAM;      /* SA-1 BW-RAM base (aliases into SRAM) */
    bool     HiROM;
    bool     LoROM;
    uint16_t SRAMMask;

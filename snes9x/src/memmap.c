@@ -141,6 +141,7 @@ static void Sanitize(char* str, size_t bufsize)
  * reading the ROM file via FatFS, then calls LoadROM(NULL). */
 #include "port_alloc.h"
 #include "fxemu.h"
+#include "sa1.h"
 
 extern FxInit_s SuperFX;
 
@@ -543,8 +544,17 @@ void InitROM(bool Interleaved)
       if ((Memory.ROMType & 0xf0) == 0xf0 && (strncmp(Memory.ROMName, "MEGAMAN X", 9) == 0 || strncmp(Memory.ROMName, "ROCKMAN X", 9) == 0))
          Settings.C4 = !Settings.ForceNoC4;
 
+      /* SA-1 (Super Mario RPG, Kirby Super Star, Kirby's Dream Land 3, ...).
+       * NSRT-compatible detection: LoROM speed 0x23, ROMType 0x34-0x3f. */
+      if (Settings.ForceSA1 ||
+          (!Settings.ForceNoSA1 && (Memory.ROMSpeed & ~0x10) == 0x23 &&
+           (Memory.ROMType & 0x0f) > 3 && (Memory.ROMType & 0xf0) == 0x30))
+         Settings.SA1 = true;
+
       if (Settings.SuperFX)
          SuperFXROMMap();
+      else if (Settings.SA1)
+         SA1ROMMap();
       else if ((Memory.ROMSpeed & ~0x10) == 0x25)
          TalesROMMap(Interleaved);
       else if (Memory.ExtendedFormat)
@@ -967,6 +977,103 @@ void SuperFXROMMap(void)
    /* Wire the GSU link struct now that ROM/SRAM/FillRAM and CalculatedSize
     * are all valid; FxReset (from S9xReset) consumes it. */
    S9xInitSuperFX();
+}
+
+/* SA-1 CPU + main-CPU memory map. Ported from CATSFC's SA1ROMMap and adapted
+ * to this tree's map model: upstream keeps a separate Memory.WriteMap plus
+ * BlockIsRAM/BlockIsROM arrays and a real WriteProtectROM(); here there is a
+ * single Memory.Map[] classified by MapInfo[].Type, so the SA-1 write map is
+ * derived explicitly (ROM blocks -> MAP_NONE). BW-RAM aliases into Memory.SRAM;
+ * SA-1 I-RAM lives at FillRAM[0x3000] (shared with the SuperFX GSU register
+ * window, but the two chips are mutually exclusive). */
+void SA1ROMMap(void)
+{
+   int32_t c;
+   int32_t i;
+
+   /* Pico port: the SA-1 char-conversion path stages tiles into a dedicated
+    * 64 KB PSRAM buffer (upstream reused Memory.ROM[MAX_ROM_SIZE-0x10000],
+    * which has no equivalent here). Allocate once, reuse across ROM loads. */
+   if (!SA1CharDMABuffer)
+      SA1CharDMABuffer = (uint8_t*) port_alloc_psram(0x10000);
+
+   /* Banks 00->3f and 80->bf (main-CPU view) */
+   for (c = 0; c < 0x400; c += 16)
+   {
+      Memory.Map [c + 0] = Memory.Map [c + 0x800] = Memory.RAM;
+      Memory.Map [c + 1] = Memory.Map [c + 0x801] = Memory.RAM;
+      Memory.MapInfo[c + 0].Type = Memory.MapInfo[c + 0x800].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 1].Type = Memory.MapInfo[c + 0x801].Type = MAP_TYPE_RAM;
+
+      Memory.Map [c + 2] = Memory.Map [c + 0x802] = (uint8_t*) MAP_PPU;
+      /* $3000-$3fff: SA-1 I-RAM window (FillRAM[0x3000]) as seen by the SNES */
+      Memory.Map [c + 3] = Memory.Map [c + 0x803] = &Memory.FillRAM [0x3000] - 0x3000;
+      Memory.MapInfo[c + 3].Type = Memory.MapInfo[c + 0x803].Type = MAP_TYPE_RAM;
+      Memory.Map [c + 4] = Memory.Map [c + 0x804] = (uint8_t*) MAP_CPU;
+      Memory.Map [c + 5] = Memory.Map [c + 0x805] = (uint8_t*) MAP_CPU;
+      Memory.Map [c + 6] = Memory.Map [c + 0x806] = (uint8_t*) MAP_BWRAM;
+      Memory.Map [c + 7] = Memory.Map [c + 0x807] = (uint8_t*) MAP_BWRAM;
+      for (i = c + 8; i < c + 16; i++)
+      {
+         Memory.Map [i] = Memory.Map [i + 0x800] = &Memory.ROM [(c << 11) % Memory.CalculatedSize] - 0x8000;
+         Memory.MapInfo[i].Type = Memory.MapInfo[i + 0x800].Type = MAP_TYPE_ROM;
+      }
+   }
+
+   /* Banks 40->7f: BW-RAM linear window (into SRAM, masked to 128 KB) */
+   for (c = 0; c < 0x400; c += 16)
+   {
+      for (i = c; i < c + 16; i++)
+      {
+         Memory.Map [i + 0x400] = (uint8_t*) &Memory.SRAM [(c << 12) & 0x1ffff];
+         Memory.MapInfo[i + 0x400].Type = MAP_TYPE_RAM;
+      }
+   }
+
+   /* Banks c0->ff: linear 64 KB ROM image */
+   for (c = 0; c < 0x400; c += 16)
+   {
+      for (i = c; i < c + 16; i++)
+      {
+         Memory.Map [i + 0xc00] = &Memory.ROM [(c << 12) % Memory.CalculatedSize];
+         Memory.MapInfo[i + 0xc00].Type = MAP_TYPE_ROM;
+      }
+   }
+
+   /* Banks 7e->7f: WRAM */
+   for (c = 0; c < 16; c++)
+   {
+      Memory.Map [c + 0x7e0] = Memory.RAM;
+      Memory.Map [c + 0x7f0] = Memory.RAM + 0x10000;
+      Memory.MapInfo[c + 0x7e0].Type = MAP_TYPE_RAM;
+      Memory.MapInfo[c + 0x7f0].Type = MAP_TYPE_RAM;
+   }
+   WriteProtectROM();
+
+   /* Clone into the SA-1 CPU's own read/write maps. The write map equals the
+    * read map except ROM blocks become MAP_NONE, so SA-1 stores to ROM are
+    * dropped (this replaces upstream's memcpy(Memory.WriteMap)+WriteProtectROM). */
+   for (i = 0; i < MEMMAP_NUM_BLOCKS; i++)
+   {
+      SA1.Map[i] = Memory.Map[i];
+      SA1.WriteMap[i] = (Memory.MapInfo[i].Type == MAP_TYPE_ROM)
+                        ? (uint8_t*) MAP_NONE : Memory.Map[i];
+   }
+
+   /* Banks 00->3f and 80->bf (SA-1 view): I-RAM mapped at bank offset 0 */
+   for (c = 0; c < 0x400; c += 16)
+   {
+      SA1.Map [c + 0] = SA1.Map [c + 0x800] = &Memory.FillRAM [0x3000];
+      SA1.Map [c + 1] = SA1.Map [c + 0x801] = (uint8_t*) MAP_NONE;
+      SA1.WriteMap [c + 0] = SA1.WriteMap [c + 0x800] = &Memory.FillRAM [0x3000];
+      SA1.WriteMap [c + 1] = SA1.WriteMap [c + 0x801] = (uint8_t*) MAP_NONE;
+   }
+
+   /* Banks 60->6f: BW-RAM bitmap (SA-1 view only) */
+   for (c = 0; c < 0x100; c++)
+      SA1.Map [c + 0x600] = SA1.WriteMap [c + 0x600] = (uint8_t*) MAP_BWRAM_BITMAP;
+
+   Memory.BWRAM = Memory.SRAM;
 }
 
 void DSPMap(void)

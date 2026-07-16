@@ -18,6 +18,8 @@ target_sources(snes9x_core INTERFACE
     src/memmap.c
     src/obc1.c
     src/ppu.c
+    src/sa1.c
+    src/sa1cpu.c
     src/soundux.c
     src/spc700.c
     src/srtc.c
