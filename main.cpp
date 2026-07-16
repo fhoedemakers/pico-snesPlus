@@ -70,7 +70,7 @@ extern "C" uint16_t *s9x_port_fb_window;
 extern uint16_t *g_snes_private_screen;
 #endif
 
-#define EMULATOR_CLOCKFREQ_KHZ 504000   /* RP2350 overclock — 504 MHz (experiment; was 378) */
+#define EMULATOR_CLOCKFREQ_KHZ 378000  // 504000   /* RP2350 overclock — 504 MHz (experiment; was 378) */
 #define AUDIOBUFFERSIZE 1024
 /* 44100, matching everything downstream: the TLV320 DAC's register
  * script is written for 44.1 kHz (its BCLK-fed PLL runs below spec at
@@ -1064,7 +1064,7 @@ int main()
      * Fox is PSRAM-bandwidth-bound, so it sees no gain. Games that were just
      * short of 60 (SMW) do benefit. See the GSU profiling notes in
      * snes9x/src/fxemu.c and CMakeLists.txt. */
-    Frens::setClocksAndStartStdio(CPUFreqKHz, VREG_VOLTAGE_1_65);
+    Frens::setClocksAndStartStdio(CPUFreqKHz, VREG_VOLTAGE_1_60);
     Frens::dumpHeapStats("startup");
 
     printf("==========================================================================================\n");
