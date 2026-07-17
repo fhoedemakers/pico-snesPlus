@@ -1041,7 +1041,7 @@ int main()
     romName = selectedRom;
     ErrorMessage[0] = selectedRom[0] = 0;
     // Set min/max CPU freq and voltage limits for this board for overclocking. 
-    Frens::setOverclockLimits(EMULATOR_CLOCKFREQ_KHZ,  EMULATOR_MAX_CLOCKFREQ_KHZ, vreg_voltage::VREG_VOLTAGE_1_60,vreg_voltage::VREG_VOLTAGE_1_65);
+    Frens::setOverclockLimits(EMULATOR_CLOCKFREQ_KHZ,  EMULATOR_MAX_CLOCKFREQ_KHZ, vreg_voltage::VREG_VOLTAGE_1_60,vreg_voltage::VREG_VOLTAGE_1_70);
    
      Frens::FlashParams *flashParams;
     // assign flashParams to point to flash location
