@@ -9,6 +9,8 @@ It is a sister project of these emulators, with which it shares its menu, displa
 - Game Boy / Game Boy Color: [pico-peanutGB](https://github.com/fhoedemakers/pico-peanutGB)
 - Sega Mega Drive / Genesis: [pico-genesisPlus](https://github.com/fhoedemakers/pico-genesisPlus)
 
+See [CHANGELOG.md](CHANGELOG.md) for release notes and per-board download links.
+
 ***
 
 ## Status and limitations
@@ -33,7 +35,7 @@ Many SNES cartridges carry an extra chip that the console itself does not have. 
 | DSP-2 / DSP-3 / DSP-4 | Emulated | Dungeon Master, SD Gundam GX, Top Gear 3000 |
 | Super FX (GSU-1 / GSU-2) | Emulated, **speed varies — see below** | Star Fox, Yoshi's Island, Stunt Race FX, Doom |
 | C4 | Emulated | Mega Man X2, Mega Man X3 |
-| SA-1 | Super Mario RPG, Kirby Super Star, Kirby's Dream Land 3 |
+| SA-1 | Emulated | Super Mario RPG, Kirby Super Star, Kirby's Dream Land 3 |
 | OBC1 | Emulated | Metal Combat: Falcon's Revenge |
 | S-RTC | Emulated | Dai Kaijuu Monogatari II |
 
@@ -166,6 +168,10 @@ Run `./bld.sh -h` for all options. The resulting `.uf2` file is placed in the `r
 
 - The [Snes9x](https://github.com/snes9xgit/snes9x) authors, and the maintainers of the ndssfc/CATSFC line of C ports on which the bundled core is based.
 - The menu, HDMI driver, PSRAM allocator, and controller code in [pico_shared](https://github.com/fhoedemakers/pico_shared) are shared with the sister projects listed at the top of this README.
+
+## Use of AI
+
+The port of the Snes9x core to the RP2350, the coprocessor work (Super FX, DSP, SA-1, C4, OBC1, S-RTC), and the performance and stability tuning were developed with the help of [Anthropic Claude](https://www.anthropic.com/claude) (Opus 4.7, Opus 4.8 and Fable).
 
 ## License
 
