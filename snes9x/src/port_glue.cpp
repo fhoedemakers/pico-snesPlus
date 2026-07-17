@@ -64,6 +64,15 @@ uint16_t *s9x_port_fb_window = nullptr;
  * GFX.SubScreen, which is now a strip far too small for it. PSRAM, same
  * tier SubScreen was in before. */
 uint8_t *s9x_port_objonline = nullptr;
+/* Optional hook fired just before the TOP strip (absolute row 0) is copied
+ * to the single-buffered framebuffer. main.cpp registers it to stamp the FPS
+ * overlay INTO the strip, so the digits are published together with the
+ * frame's pixels in one copy-out. Stamping the overlay into the live FB
+ * *after* the copy-out (as the port used to) left a sub-frame window where
+ * the copy-out had already overwritten last frame's digits with game pixels
+ * but the re-stamp had not run yet — scan-out caught that gap and the overlay
+ * flickered. Passed the strip base (uint16_t) and its stride in pixels. */
+void (*s9x_port_strip_top_hook)(uint16_t *strip, int stride) = nullptr;
 }
 
 /* (Re-)anchor the framebuffer window for the current PPU.ScreenHeight
@@ -99,6 +108,10 @@ extern "C" void __not_in_flash_func(s9x_port_strip_repoint)(uint32_t row)
  * framebuffer window. SRAM->SRAM, ~8 KB per 16-row chunk. */
 extern "C" void __not_in_flash_func(s9x_port_strip_copyout)(uint32_t start_row, uint32_t end_row)
 {
+    /* Stamp the overlay into the top strip before publishing it, so it rides
+     * out with the frame's own pixels (no post-copy-out re-stamp gap). */
+    if (start_row == 0 && s9x_port_strip_top_hook)
+        s9x_port_strip_top_hook((uint16_t *)strip_screen, SNES_WIDTH);
     const uint8_t *src = strip_screen;
     uint16_t      *dst = s9x_port_fb_window + start_row * FB_WIDTH;
     for (uint32_t y = start_row; y <= end_row; y++) {

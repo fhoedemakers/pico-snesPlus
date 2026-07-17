@@ -65,6 +65,10 @@ extern "C" {
  * and exposes the window pointer for the FPS overlay. */
 extern "C" void s9x_port_anchor_screen(void);
 extern "C" uint16_t *s9x_port_fb_window;
+/* Hook called by the strip copy-out just before the top strip is published,
+ * so the FPS overlay can be stamped into the frame's own pixels instead of
+ * into the live single-buffered FB after the fact (which flickered). */
+extern "C" void (*s9x_port_strip_top_hook)(uint16_t *strip, int stride);
 #else
 /* port glue — snes9x's render target, 256-wide RGB555 in PSRAM. */
 extern uint16_t *g_snes_private_screen;
@@ -675,6 +679,19 @@ static void draw_fps_overlay(uint16_t *screen, int stride)
     }
 }
 
+#if HSTX && RENDER_TO_FB
+/* Registered as s9x_port_strip_top_hook: the strip copy-out calls this with
+ * the top strip (stride SNES_WIDTH) just before it is published to the
+ * framebuffer, so the overlay is baked into the frame's own pixels rather
+ * than stamped into the live FB afterwards. The strip is 16 rows, the overlay
+ * 8 — it fits. Runs once per rendered frame; the flag load is cheap. */
+static void fps_overlay_strip_hook(uint16_t *strip, int stride)
+{
+    if (settings.flags.displayFrameRate)
+        draw_fps_overlay(strip, stride);
+}
+#endif
+
 /* -------------------------------------------------------------------------
  * Cartridge battery SRAM persistence. snes9x keeps the save in Memory.SRAM;
  * the real battery size is Memory.SRAMMask+1 when Memory.SRAMSize>0 (and there
@@ -787,6 +804,9 @@ static void run_emulator(void)
     uint8_t  skipFrames = 0;
 #if HSTX && RENDER_TO_FB
     int last_screen_h = PPU.ScreenHeight;
+    /* Stamp the FPS overlay inside the strip copy-out (see hook comment) so it
+     * publishes with the frame — never a visible gap on the live scan-out. */
+    s9x_port_strip_top_hook = fps_overlay_strip_hook;
 #endif
 #if HSTX
     uint32_t audio_min_level = UINT32_MAX;
@@ -888,11 +908,11 @@ static void run_emulator(void)
 #endif
 
 #if HSTX && RENDER_TO_FB
-        /* The strip renderer already copied the finished frame into the
-         * framebuffer window chunk by chunk — just stamp the FPS digits
-         * on top. */
-        if (IPPU.RenderThisFrame && settings.flags.displayFrameRate)
-            draw_fps_overlay(s9x_port_fb_window, 320);
+        /* No post-loop overlay stamp here: fps_overlay_strip_hook already
+         * stamped the digits INTO the top strip during the copy-out, so they
+         * were published with the frame's pixels. Stamping into the live
+         * single-buffered FB after the copy-out (as this used to) left a gap
+         * where scan-out saw the top rows without the overlay — it flickered. */
 #elif HSTX
         /* Blit private PSRAM screen → HSTX SRAM framebuffer, centered.
          * 256*224*2 = 112 KB per NTSC frame (~2.5 ms of PSRAM reads). */
