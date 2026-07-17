@@ -1,4 +1,4 @@
-# pico_snesPlus
+# pico-snesPlus
 
 **pico-snesPlus** is a Super Nintendo Entertainment System (SNES) emulator for RP2350-based microcontroller boards with PSRAM. It loads ROMs from an SD card through an on-screen menu and outputs video and audio over HDMI. The emulator core is a C-only derivative of [Snes9x](https://github.com/snes9xgit/snes9x) (the ndssfc/CATSFC lineage), adapted to the RP2350 and its 8 MB of PSRAM.
 
