@@ -64,16 +64,13 @@ Star Ocean, Street Fighter Alpha 2 (S-DD1) and Far East of Eden Zero (SPC7110) u
 - The RP2350 runs at 378 MHz by default, which is stable across the tested games.
 - An optional 504 MHz overclock can be enabled in the settings menu. It can cause instability and rarely improves speed, so it is off by default.
 
-**Metadata**
-
-- Box art and short game descriptions are shown in the menu when a metadata pack is installed on the SD card. The screensaver then shows floating box art.
-
 ## Known limitations
 
 - **Frame skipping is on by default** (every other frame; one frame in three for Super FX games). Turn it off in the settings menu to render every frame for smoother motion; many games still hold full speed, but some slow down, so try it per game.
 - Demanding Super FX games such as Star Fox run below full speed.
 - The SETA (ST010 / ST011) and BS-X chips are not implemented and, unlike S-DD1 and SPC7110, are not detected — those games load but misbehave.
 - Development and testing take place mainly on the Adafruit Fruit Jam; the other supported boards still need testing.
+- Game metadata and box art are not available yet — no SNES metadata pack has been released, so the menu shows no cover art or descriptions and the screensaver shows the default floating logo.
 
 ## Use of AI
 

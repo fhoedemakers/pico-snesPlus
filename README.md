@@ -132,7 +132,7 @@ In the menu:
 - **Up/Down**: previous/next item, **Left/Right**: previous/next page.
 - **A**: open folder / start the selected game.
 - **B**: back to the parent folder.
-- **Start**: show game metadata and box art, when metadata files are present on the card (same format as the sister projects).
+- **Start**: show game metadata and box art (a SNES metadata pack is not available yet, so there is nothing to show for now).
 - **Select**: open the settings menu.
 
 In game:
