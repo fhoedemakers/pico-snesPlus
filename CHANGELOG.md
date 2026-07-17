@@ -1,0 +1,92 @@
+# CHANGELOG
+
+First public release of pico_snesPlus.
+
+# General Info
+
+[Binaries for each configuration are at the end of this page](#downloads___).
+
+[See the Supported hardware and SD card setup sections in the README for how to install and wire up your board.](https://github.com/fhoedemakers/pico-snesPlus#supported-hardware)
+
+> [!IMPORTANT]
+> An **RP2350** board with **8 MB PSRAM** is required. The original RP2040 (Pico 1), and RP2350 boards without PSRAM, are not supported.
+
+# v0.1
+
+First public release. There will be bugs. Please register an issue when you encounter one.
+
+## Features
+
+**Cartridge ROMs**
+
+- SNES ROMs (`.smc` / `.sfc`) are loaded directly from the SD card through an on-screen menu. Subdirectories are supported.
+- Games generally run at full speed (60 fps).
+
+**Expansion chips**
+
+Many SNES cartridges carry an extra chip that the console itself does not have. These are emulated:
+
+- **DSP-1 to DSP-4** — Super Mario Kart, Pilotwings, Top Gear 3000.
+- **Super FX** — Star Fox, Yoshi's Island, Stunt Race FX.
+- **C4** — Mega Man X2, Mega Man X3.
+- **SA-1** — Super Mario RPG, Kirby Super Star, Kirby's Dream Land 3.
+- **OBC1** — Metal Combat: Falcon's Revenge.
+- **S-RTC** — Dai Kaijuu Monogatari II.
+
+Super FX speed depends on how hard the game leans on the chip: Yoshi's Island plays well, while Star Fox renders correctly but runs at about half speed.
+
+Star Ocean, Street Fighter Alpha 2 (S-DD1) and Far East of Eden Zero (SPC7110) use chips that are not supported; these games are refused with a message when you try to load them.
+
+**Battery saves**
+
+- In-game saves that a cartridge writes to its battery-backed memory are stored on the SD card under `/SAVES/SNES/`.
+- The save is written when you quit a game to the menu (Select + Start → Quit game), so **quit to the menu before powering off** to keep your progress. There are no save states.
+
+**Display**
+
+- HDMI video output.
+- 8:7 and 1:1 screen modes, optional scanlines, and an on-screen FPS overlay.
+- On the Adafruit Fruit Jam the NeoPixel LEDs can act as a VU meter.
+
+**Audio**
+
+- Sound is played over HDMI, the audio jack, or an external I²S DAC, depending on the board.
+
+**Controllers**
+
+- USB controllers, including Xbox / XInput (and 8BitDo in X-mode), Sony DualShock 4 / DualSense, the AliExpress SNES USB pad, PlayStation Classic, and USB keyboards.
+- Directly wired NES / SNES gamepads, and the Wii Classic / SNES-Classic-mini pad over I²C.
+- Two-player play with a second USB controller.
+- A controller test screen in the settings menu shows which button the emulator receives for each press.
+
+**Overclocking**
+
+- The RP2350 runs at 378 MHz by default, which is stable across the tested games.
+- An optional 504 MHz overclock can be enabled in the settings menu. It can cause instability and rarely improves speed, so it is off by default.
+
+**Metadata**
+
+- Box art and short game descriptions are shown in the menu when a metadata pack is installed on the SD card. The screensaver then shows floating box art.
+
+## Known limitations
+
+- **Frame skipping is on by default** (one frame in three). It is no longer needed on most games — turn it off in the settings menu for smoother motion.
+- Demanding Super FX games such as Star Fox run below full speed.
+- The SETA (ST010 / ST011) and BS-X chips are not implemented and, unlike S-DD1 and SPC7110, are not detected — those games load but misbehave.
+- Development and testing take place mainly on the Adafruit Fruit Jam; the other supported boards still need testing.
+
+## Use of AI
+
+The port of the Snes9x core to the RP2350, the coprocessor work (Super FX, DSP, SA-1, C4, OBC1, S-RTC), and the performance and stability tuning were developed with the help of [Anthropic Claude](https://www.anthropic.com/claude) (Opus 4.7, Opus 4.8 and Fable).
+
+<a name="downloads___"></a>
+## Downloads by configuration
+
+Only the four RP2350 + PSRAM configurations below are supported. For board-by-board wiring and which UF2 file to flash, see the [Supported hardware section in the README](https://github.com/fhoedemakers/pico-snesPlus#supported-hardware).
+
+| HW_CONFIG | Board | Binary |
+|:--|:--|:--|
+| 2 | Breadboard with Pimoroni Pico Plus 2 | [pico_snesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitDVISD_pico2_arm.uf2) |
+| 8 | Adafruit Fruit Jam | [pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2) |
+| 13 | Murmulator M2 | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2) |
+| 14 | Adafruit Feather RP2350 with TLV320DAC3100 | [pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
