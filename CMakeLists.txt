@@ -1,10 +1,10 @@
-# pico_snesPlus — snes9x port for RP2350 + PSRAM, using the pico_shared
+# pico-snesPlus — snes9x port for RP2350 + PSRAM, using the pico_shared
 # emulator framework. First-target build: HSTX (RGB555) on HW_CONFIG=8
 # (Adafruit Fruit Jam). PicoDVI/RGB444 path is a follow-up.
 
 cmake_minimum_required(VERSION 3.13)
 
-set(projectname pico_snesPlus)
+set(projectname picosnesPlus)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -37,10 +37,10 @@ if(NOT PICO_BOARD)
     set(PICO_BOARD pico2 CACHE STRING "Board type")
 endif()
 if(PICO_PLATFORM STREQUAL "rp2040")
-    message(FATAL_ERROR "pico_snesPlus requires RP2350 with PSRAM. Pick a HW_CONFIG that selects an RP2350 board (2, 8, 13, 14).")
+    message(FATAL_ERROR "pico-snesPlus requires RP2350 with PSRAM. Pick a HW_CONFIG that selects an RP2350 board (2, 8, 13, 14).")
 endif()
 if(NOT PSRAM_CS_PIN OR PSRAM_CS_PIN EQUAL 0)
-    message(FATAL_ERROR "pico_snesPlus requires PSRAM. Selected board has no PSRAM_CS_PIN.")
+    message(FATAL_ERROR "pico-snesPlus requires PSRAM. Selected board has no PSRAM_CS_PIN.")
 endif()
 
 add_definitions(-DNDEBUG)
