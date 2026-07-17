@@ -64,7 +64,7 @@ The bottleneck is PSRAM bandwidth, not the CPU clock, so the optional overclock 
 
 By default the RP2350 is overclocked to 378 MHz for this emulator. This clock gives stable performance across the tested games.
 
-The settings menu has an optional overclock that raises the clock to 504 MHz. **Enabling it can lead to instabilities and crashes**, and the performance gain is minimal: the real bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed at 504 MHz as they do at 378 MHz. Only enable it if you want to experiment, and expect reduced stability.
+On HW_CONFIG 2 (Pimoroni Pico Plus 2 breadboard) and HW_CONFIG 8 (Adafruit Fruit Jam), the settings menu has an optional overclock that raises the clock to 504 MHz; it is not offered on the Murmulator M2 (13) or the Feather RP2350 (14). **Enabling it can lead to instabilities and crashes**, and the performance gain is minimal: the real bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed at 504 MHz as they do at 378 MHz. Only enable it if you want to experiment, and expect reduced stability.
 
 Use this software at your own risk. I am not responsible in any way for damage to your board and/or connected peripherals caused by using this software, nor for damage caused by incorrect wiring or voltages.
 
