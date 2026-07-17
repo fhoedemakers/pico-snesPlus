@@ -54,13 +54,15 @@ The Super FX chip is emulated correctly, but **whether a game is playable depend
 - **Star Fox renders correctly but is too slow to play**, landing around 30 fps rather than 60. It draws its entire 3D world through the chip, and the GSU accounts for roughly a third of all emulation time.
 - Other Super FX games are not tested.
 
-The bottleneck is PSRAM bandwidth, not the CPU clock, so the overclock described below does not help these games — Star Fox runs at the same speed at 504 MHz as it did at 378 MHz. Other Super FX titles fall somewhere between these two cases; try them and see.
+The bottleneck is PSRAM bandwidth, not the CPU clock, so the optional overclock described below does not help these games — Star Fox runs at the same speed at 504 MHz as it did at 378 MHz. Other Super FX titles fall somewhere between these two cases; try them and see.
 
 ***
 
-## Warning
+## Overclocking
 
-To reach the performance described above, the RP2350 is overclocked to 504 MHz with the core voltage raised to 1.65 V (the default is 1.10 V). Both values are required, not precautionary: 504 MHz hard-faults at 1.60 V. Note that 1.65 V is well past the RP2350's rated range — the Pico SDK caps the regulator at 1.30 V and this port explicitly lifts that limit. This is a significant overclock and overvolt that trades chip lifetime for speed.
+By default the RP2350 is overclocked to 378 MHz for this emulator. This clock gives stable performance across the tested games.
+
+The settings menu has an optional overclock that raises the clock to 504 MHz. **Enabling it can lead to instabilities and crashes**, and the performance gain is minimal: the real bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed at 504 MHz as they do at 378 MHz. Only enable it if you want to experiment, and expect reduced stability.
 
 Use this software at your own risk. I am not responsible in any way for damage to your board and/or connected peripherals caused by using this software, nor for damage caused by incorrect wiring or voltages.
 
