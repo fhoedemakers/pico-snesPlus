@@ -72,10 +72,10 @@ An RP2350 board with 8 MB of PSRAM is required. Only the four hardware configura
 
 | HW_CONFIG | Hardware | Binary |
 | --- | --- | --- |
-| 2 | Breadboard with [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107), [Adafruit DVI Breakout](https://www.adafruit.com/product/4984), and [Adafruit Micro-SD breakout](https://www.adafruit.com/product/254) | [pico_snesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico_snesPlus/releases/latest/download/pico_snesPlus_AdafruitDVISD_pico2_arm.uf2) |
-| 8 | [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) (primary development and test board) | [pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico_snesPlus/releases/latest/download/pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2) |
-| 13 | [Murmulator M2](https://murmulator.ru) | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico_snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2) |
-| 14 | [Adafruit Feather RP2350 with HSTX Port](https://www.adafruit.com/product/6130) with TLV320DAC3100 I2S DAC and microSD breakout | [pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico_snesPlus/releases/latest/download/pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
+| 2 | Breadboard with [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107), [Adafruit DVI Breakout](https://www.adafruit.com/product/4984), and [Adafruit Micro-SD breakout](https://www.adafruit.com/product/254) | [pico_snesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitDVISD_pico2_arm.uf2) |
+| 8 | [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) (primary development and test board) | [pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2) |
+| 13 | [Murmulator M2](https://murmulator.ru) | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2) |
+| 14 | [Adafruit Feather RP2350 with HSTX Port](https://www.adafruit.com/product/6130) with TLV320DAC3100 I2S DAC and microSD breakout | [pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
 
 Notes per configuration:
 
@@ -147,8 +147,8 @@ Build on Linux (a Raspberry Pi also works) or on Windows under WSL, with the [Pi
 Then:
 
 ```bash
-git clone https://github.com/fhoedemakers/pico_snesPlus.git
-cd pico_snesPlus
+git clone https://github.com/fhoedemakers/pico-snesPlus.git
+cd pico-snesPlus
 git submodule update --init --recursive
 ./bld.sh -c2 -2    # HW_CONFIG 2:  Pimoroni Pico Plus 2 breadboard
 ./bld.sh -c8       # HW_CONFIG 8:  Adafruit Fruit Jam
