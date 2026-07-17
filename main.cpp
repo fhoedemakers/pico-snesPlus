@@ -70,7 +70,8 @@ extern "C" uint16_t *s9x_port_fb_window;
 extern uint16_t *g_snes_private_screen;
 #endif
 
-#define EMULATOR_CLOCKFREQ_KHZ 378000  // 504000   /* RP2350 overclock — 504 MHz (experiment; was 378) */
+#define EMULATOR_CLOCKFREQ_KHZ 378000      /* RP2350 default clock for this emulator */
+#define EMULATOR_MAX_CLOCKFREQ_KHZ 504000  /* RP2350 max overclock — 504 MHz (experiment, may be unstable) */
 #define AUDIOBUFFERSIZE 1024
 /* 44100, matching everything downstream: the TLV320 DAC's register
  * script is written for 44.1 kHz (its BCLK-fed PLL runs below spec at
@@ -164,7 +165,7 @@ int8_t g_settings_visibility_snes[MOPT_COUNT] = {
     0,                  /* MOPT_AUTO_INSERT_FDS_DISK_A — NES/FDS only */
     0,                  /* MOPT_AUTO_SWAP_FDS_DISK — NES/FDS only */
     0,                  /* MOPT_FDS_DISK_SWAP — NES/FDS only */
-    0,                  /* MOPT_OVERCLOCK — already overclocked by default here */
+    HSTX,                  /* MOPT_OVERCLOCK — already overclocked by default here */
     0,                  /* MOPT_FM_AUDIO — SMS-only */
     1,                  /* MOPT_ENTER_BOOTSEL_MODE */
     1,                  /* MOPT_CONTROLLER_TEST */
@@ -812,18 +813,23 @@ static void run_emulator(void)
 #endif
             int r = showSettingsMenu(true);
             if (r == 3) {
-                /* Quit game. Instead of returning to main()'s in-place
-                 * teardown + menu re-entry (S9xDeinit*, core1 park/resume,
-                 * wav-player reset, screen-mode switch) — a fragile sequence
-                 * that intermittently core1-hardfaults at the 504 MHz OC
-                 * margin (undefined-instruction fetch glitch during the
-                 * transition) — flush the battery save and hard-reboot to a
-                 * clean boot + fresh ROM menu. The mixer is already parked;
-                 * watchdog_reboot resets both cores and all peripherals, so
-                 * there is no teardown to get wrong. */
-                snes_save_sram();
-                watchdog_reboot(0, 0, 0);
-                while (true) tight_loop_contents();   /* not reached */
+                if ((clock_get_hz(clk_hstx) / 1000) > EMULATOR_CLOCKFREQ_KHZ)
+                {
+                    /* Quit game. Instead of returning to main()'s in-place
+                     * teardown + menu re-entry (S9xDeinit*, core1 park/resume,
+                     * wav-player reset, screen-mode switch) — a fragile sequence
+                     * that intermittently core1-hardfaults at the 504 MHz OC
+                     * margin (undefined-instruction fetch glitch during the
+                     * transition) — flush the battery save and hard-reboot to a
+                     * clean boot + fresh ROM menu. The mixer is already parked;
+                     * watchdog_reboot resets both cores and all peripherals, so
+                     * there is no teardown to get wrong. */
+                    snes_save_sram();
+                    watchdog_reboot(0, 0, 0);
+                    while (true)
+                        tight_loop_contents(); /* not reached */
+                }
+                return;
             }
             if (r == 5) {
                 /* Reset game. Do it while the mixer is still parked —
@@ -1034,37 +1040,20 @@ int main()
 {
     romName = selectedRom;
     ErrorMessage[0] = selectedRom[0] = 0;
+    // Set min/max CPU freq and voltage limits for this board for overclocking. 
+    Frens::setOverclockLimits(EMULATOR_CLOCKFREQ_KHZ,  EMULATOR_MAX_CLOCKFREQ_KHZ, vreg_voltage::VREG_VOLTAGE_1_60,vreg_voltage::VREG_VOLTAGE_1_65);
+   
+     Frens::FlashParams *flashParams;
+    // assign flashParams to point to flash location
 
-    /* 504 MHz @ 1.65 V on this Fruit Jam board. Hardware-verified: menu,
-     * HSTX and PIO USB all fine, no hard fault under sustained load, and
-     * Super Mario World holds a stable 60 fps (was 54-57 at 378 MHz).
-     *
-     * History: 378 MHz needed 1.60 V here — 1.30 V booted and ran but was
-     * marginal, hard-faulting with corrupted core1 control flow (garbage PC,
-     * pristine memory) ~14 s into a game once PIO USB + TLV320 + core1
-     * blit/mix load peaked. 432/480/504 were tried back then and all
-     * hard-faulted under sustained load. That turned out NOT to be a voltage
-     * ceiling: setClocksAndStartStdio hard-coded the XIP flash divisor at 4,
-     * so flash tracked clk_sys and ran at 108/120/126 MHz at those clocks,
-     * far past what the QSPI part samples reliably. XIP traffic peaks under
-     * emulator load, which is why it looked like a load-correlated (i.e.
-     * voltage-ish) failure. pico_shared now scales that divisor with clk_sys
-     * (84 MHz flash at 504, unchanged 94.5 MHz at 378) and 504 is stable.
-     *
-     * 1.65 V is REQUIRED, not precautionary: 504 MHz hard-faults at 1.60 V
-     * even with the flash divisor scaled (tested 2026-07-15). Voltage is the
-     * real ceiling on this board — 1.30 -> 1.60 unlocked 378, 1.60 -> 1.65
-     * unlocked 504. Note 1.65 V is well past the RP2350's rated range (the
-     * SDK caps VREG_VOLTAGE_MAX at 1.30; the port calls
-     * vreg_disable_voltage_limit()), so this trades chip lifetime for clock.
-     * Do not lower it expecting 504 to hold.
-     *
-     * Note this buys nothing for SuperFX: PSRAM is pinned at 126 MHz at both
-     * 378 and 504 (divisor ceil(clk/133MHz) absorbs the increase), and Star
-     * Fox is PSRAM-bandwidth-bound, so it sees no gain. Games that were just
-     * short of 60 (SMW) do benefit. See the GSU profiling notes in
-     * snes9x/src/fxemu.c and CMakeLists.txt. */
-    Frens::setClocksAndStartStdio(CPUFreqKHz, VREG_VOLTAGE_1_60);
+    flashParams = (Frens::FlashParams *)FLASHPARAM_ADDRESS;
+    vreg_voltage voltage = vreg_voltage::VREG_VOLTAGE_1_60;
+    if ( Frens::validateFlashParams(*flashParams) ) {
+        CPUFreqKHz = flashParams->cpuFreqKHz;
+        voltage = flashParams->voltage;
+    }
+   
+    Frens::setClocksAndStartStdio(CPUFreqKHz, voltage);
     Frens::dumpHeapStats("startup");
 
     printf("==========================================================================================\n");
