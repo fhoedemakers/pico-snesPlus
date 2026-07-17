@@ -62,7 +62,7 @@ Star Ocean, Street Fighter Alpha 2 (S-DD1) and Far East of Eden Zero (SPC7110) u
 **Overclocking**
 
 - The RP2350 runs at 378 MHz by default, which is stable across the tested games.
-- An optional 504 MHz overclock can be enabled in the settings menu. It can cause instability and rarely improves speed, so it is off by default.
+- An optional 504 MHz overclock can be enabled in the settings menu on HW_CONFIG 2 and 8 (Pimoroni Pico Plus 2 breadboard and Adafruit Fruit Jam); it is not offered on the Murmulator M2 or the Feather RP2350. It can cause instability and rarely improves speed, so it is off by default.
 
 ## Known limitations
 
