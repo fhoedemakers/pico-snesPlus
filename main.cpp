@@ -923,11 +923,12 @@ static void run_emulator(void)
 #endif
 
         if (skipFrames == 0) {
-            /* frameSkip=true → render 1 frame of every 3. The 256x224
-             * blit + the snes9x renderer (RenderScreen/RenderLine/Draw*)
-             * is the single biggest non-CPU cost; cutting render rate
-             * from 1/2 to 1/3 buys back substantial frame budget. */
-            skipFrames = settings.flags.frameSkip ? 2 : 0;
+            /* frameSkip=true → skip frames to buy back frame budget. The
+             * 256x224 blit + the snes9x renderer (RenderScreen/RenderLine/
+             * Draw*) is the single biggest non-CPU cost. Super FX games
+             * lean hardest on it, so they render 1 frame of every 3
+             * (skip 2); all other games render every other frame (skip 1). */
+            skipFrames = settings.flags.frameSkip ? (Settings.SuperFX ? 2 : 1) : 0;
         } else {
             skipFrames--;
         }
