@@ -813,6 +813,7 @@ static void run_emulator(void)
 #endif
             int r = showSettingsMenu(true);
             if (r == 3) {
+#if 0
                 if ((clock_get_hz(clk_sys) / 1000) > EMULATOR_CLOCKFREQ_KHZ)
                 {
                     /* Quit game. Instead of returning to main()'s in-place
@@ -829,6 +830,7 @@ static void run_emulator(void)
                     while (true)
                         tight_loop_contents(); /* not reached */
                 }
+#endif
                 return;
             }
             if (r == 5) {
