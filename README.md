@@ -19,7 +19,7 @@ Please read this section before using the emulator. SNES emulation is demanding 
 
 - **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, SA-1 and S-RTC games run;  S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.
 - **Games generally run at full speed (60 fps).** Demanding Super FX titles are the main exception; see [Expansion chips](#expansion-chips).
-- **Frame skipping is still enabled by default**, rendering one frame in three. It is no longer needed on most games — turning it off in the settings menu renders every frame, which looks considerably smoother, and full speed generally still holds. Leave it on for the heaviest titles.
+- **Frame skipping is still enabled by default.** Most games render every other frame; demanding Super FX titles render one frame in three. Turning it off in the settings menu renders every frame, which looks considerably smoother; many games still hold full speed, but some slow down — try it per game, and leave it on for the heaviest titles.
 - **Battery saves are persisted** In-game saves that a cartridge writes to its battery-backed SRAM are stored on the SD card under `/SAVES/SNES/`. The save is written when you quit the game to the ROM menu (Select + Start → Quit game), so **quit to the menu before powering off** to keep your progress — pulling power mid-game loses everything since the last quit. There is no separate save-state feature. Games that use password systems are unaffected.
 - Development and testing take place primarily on the Adafruit Fruit Jam. The other supported boards need still to be tested.
 
