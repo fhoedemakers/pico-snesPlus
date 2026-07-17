@@ -813,7 +813,7 @@ static void run_emulator(void)
 #endif
             int r = showSettingsMenu(true);
             if (r == 3) {
-                if ((clock_get_hz(clk_hstx) / 1000) > EMULATOR_CLOCKFREQ_KHZ)
+                if ((clock_get_hz(clk_sys) / 1000) > EMULATOR_CLOCKFREQ_KHZ)
                 {
                     /* Quit game. Instead of returning to main()'s in-place
                      * teardown + menu re-entry (S9xDeinit*, core1 park/resume,
@@ -1041,7 +1041,12 @@ int main()
     romName = selectedRom;
     ErrorMessage[0] = selectedRom[0] = 0;
     // Set min/max CPU freq and voltage limits for this board for overclocking. 
-    Frens::setOverclockLimits(EMULATOR_CLOCKFREQ_KHZ,  EMULATOR_MAX_CLOCKFREQ_KHZ, vreg_voltage::VREG_VOLTAGE_1_60,vreg_voltage::VREG_VOLTAGE_1_70);
+    // For 504 Mhz, 1.7V seems the minimum stable voltage.  Should run fine at 1.6 or 1.65 Volt, but
+    // may cause hardfaults on heavy scenes. 1.7V is the safe limit for 504 Mhz. 
+    // BUT CAN CAUSE DAMAGE !!!!!!
+    //1.6V is the safe limit for 378 Mhz.
+    Frens::setOverclockLimits(EMULATOR_CLOCKFREQ_KHZ,  EMULATOR_MAX_CLOCKFREQ_KHZ, 
+                              vreg_voltage::VREG_VOLTAGE_1_60,vreg_voltage::VREG_VOLTAGE_1_70);
    
      Frens::FlashParams *flashParams;
     // assign flashParams to point to flash location
