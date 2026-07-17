@@ -1,6 +1,6 @@
 # CHANGELOG
 
-First public release of pico_snesPlus.
+First public release of pico-snesPlus.
 
 # General Info
 
