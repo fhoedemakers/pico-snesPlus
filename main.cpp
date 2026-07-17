@@ -165,7 +165,7 @@ int8_t g_settings_visibility_snes[MOPT_COUNT] = {
     0,                  /* MOPT_AUTO_INSERT_FDS_DISK_A — NES/FDS only */
     0,                  /* MOPT_AUTO_SWAP_FDS_DISK — NES/FDS only */
     0,                  /* MOPT_FDS_DISK_SWAP — NES/FDS only */
-    HSTX,                  /* MOPT_OVERCLOCK — already overclocked by default here */
+    (HSTX && (HW_CONFIG == 2 || HW_CONFIG == 8)),     /* MOPT_OVERCLOCK */
     0,                  /* MOPT_FM_AUDIO — SMS-only */
     1,                  /* MOPT_ENTER_BOOTSEL_MODE */
     1,                  /* MOPT_CONTROLLER_TEST */
@@ -1048,6 +1048,8 @@ int main()
     // may cause hardfaults on heavy scenes. 1.7V is the safe limit for 504 Mhz. 
     // BUT CAN CAUSE DAMAGE !!!!!!
     //1.6V is the safe limit for 378 Mhz.
+    vreg_voltage voltage = vreg_voltage::VREG_VOLTAGE_1_60;
+#if HW_CONFIG == 2 || HW_CONFIG == 8
     Frens::setOverclockLimits(EMULATOR_CLOCKFREQ_KHZ,  EMULATOR_MAX_CLOCKFREQ_KHZ, 
                               vreg_voltage::VREG_VOLTAGE_1_60,vreg_voltage::VREG_VOLTAGE_1_70);
    
@@ -1055,12 +1057,12 @@ int main()
     // assign flashParams to point to flash location
 
     flashParams = (Frens::FlashParams *)FLASHPARAM_ADDRESS;
-    vreg_voltage voltage = vreg_voltage::VREG_VOLTAGE_1_60;
+  
     if ( Frens::validateFlashParams(*flashParams) ) {
         CPUFreqKHz = flashParams->cpuFreqKHz;
         voltage = flashParams->voltage;
     }
-   
+#endif   
     Frens::setClocksAndStartStdio(CPUFreqKHz, voltage);
     Frens::dumpHeapStats("startup");
 
