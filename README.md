@@ -81,13 +81,14 @@ An RP2350 board with 8 MB of PSRAM is required. Only the four hardware configura
 | --- | --- | --- |
 | 2 | Breadboard with [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107), [Adafruit DVI Breakout](https://www.adafruit.com/product/4984), and [Adafruit Micro-SD breakout](https://www.adafruit.com/product/254) | [pico_snesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitDVISD_pico2_arm.uf2) |
 | 8 | [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) (primary development and test board) | [pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2) |
-| 13 | [Murmulator M2](https://murmulator.ru) | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2) |
+| 13 | [Murmulator M2](https://murmulator.ru) | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2) **NOTE** may bootloop |
 | 14 | [Adafruit Feather RP2350 with HSTX Port](https://www.adafruit.com/product/6130) with TLV320DAC3100 I2S DAC and microSD breakout | [pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
 
 Notes per configuration:
 
 - **HW_CONFIG 2**: a plain Raspberry Pi Pico 2 does not work — it has no PSRAM. The Pimoroni Pico Plus 2 (with onboard PSRAM) is required.
 - **HW_CONFIG 8**: no additional hardware is required apart from a game controller. Audio is output through the monitor and the built-in speaker or headphone jack.
+- **HW_CONFIG 8**: Tested by [DynaMight1124](https://github.com/DynaMight1124). Device started bootlooping after a few minutes. Your mileage may vary.
 - **HW_CONFIG 14**: the Feather RP2350 is sold in two variants: [with 8 MB PSRAM onboard](https://www.adafruit.com/product/6130) and [without PSRAM](https://www.adafruit.com/product/6000). On the variant without PSRAM, a PSRAM chip must be soldered onto the board separately.
 
 For wiring and assembly instructions, see the setup sections of the [pico-infonesPlus README](https://github.com/fhoedemakers/pico-infonesPlus#setup). Flashing works the same for every board: hold BOOTSEL while connecting the board over USB, then copy the `.uf2` file onto the USB drive that appears.
