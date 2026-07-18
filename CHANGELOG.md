@@ -76,7 +76,6 @@ Star Ocean, Street Fighter Alpha 2 (S-DD1) and Far East of Eden Zero (SPC7110) u
 - The SETA (ST010 / ST011) and BS-X chips are not implemented and, unlike S-DD1 and SPC7110, are not detected — those games load but misbehave.
 - The SNES hi-res modes 5 and 6 (512 pixels wide, used by very few games — e.g. the Donkey Kong Country "Nintendo presents" intro screen) are rendered at half horizontal resolution, so fine hi-res text can look thin or ragged.
 - Development and testing take place mainly on the Adafruit Fruit Jam; the other supported boards still need testing.
-- Game metadata and box art are not available yet — no SNES metadata pack has been released, so the menu shows no cover art or descriptions and the screensaver shows the default floating logo.
 
 ## Use of AI
 
@@ -95,3 +94,9 @@ Only the four RP2350 + PSRAM configurations below are supported. For board-by-bo
 | 14 | Adafruit Feather RP2350 with TLV320DAC3100 | [pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
 
 - **HW_CONFIG 13**: the Murmulator M2 was tested by [DynaMight1124](https://github.com/DynaMight1124). On their device, the emulator started bootlooping after a few minutes of play; the cause is not yet known. Your mileage may vary.
+
+## Other downloads
+
+- Metadata: [SNESMetadata.zip](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/SNESMetadata.zip)
+
+Extract the zip file to the root folder of the SD card. Select a game in the menu and press START to show more information and box art. Works for most official released games. The screensaver shows floating random cover art.
