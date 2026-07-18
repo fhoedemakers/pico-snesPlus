@@ -71,8 +71,12 @@ uint8_t *s9x_port_objonline = nullptr;
  * *after* the copy-out (as the port used to) left a sub-frame window where
  * the copy-out had already overwritten last frame's digits with game pixels
  * but the re-stamp had not run yet — scan-out caught that gap and the overlay
- * flickered. Passed the strip base (uint16_t) and its stride in pixels. */
-void (*s9x_port_strip_top_hook)(uint16_t *strip, int stride) = nullptr;
+ * flickered. Passed the strip base (uint16_t), its stride in pixels, and the
+ * chunk's absolute [block_start, block_end] row range so it can stamp only
+ * the overlay rows this chunk publishes (strip physical row 0 == block_start;
+ * a game may split the top of the frame into several short redraw chunks). */
+void (*s9x_port_strip_top_hook)(uint16_t *strip, int stride,
+                                int block_start, int block_end) = nullptr;
 }
 
 /* (Re-)anchor the framebuffer window for the current PPU.ScreenHeight
@@ -108,10 +112,13 @@ extern "C" void __not_in_flash_func(s9x_port_strip_repoint)(uint32_t row)
  * framebuffer window. SRAM->SRAM, ~8 KB per 16-row chunk. */
 extern "C" void __not_in_flash_func(s9x_port_strip_copyout)(uint32_t start_row, uint32_t end_row)
 {
-    /* Stamp the overlay into the top strip before publishing it, so it rides
-     * out with the frame's own pixels (no post-copy-out re-stamp gap). */
-    if (start_row == 0 && s9x_port_strip_top_hook)
-        s9x_port_strip_top_hook((uint16_t *)strip_screen, SNES_WIDTH);
+    /* Stamp the overlay into any chunk overlapping the overlay band (rows
+     * 0..7) before publishing it, so it rides out with the frame's own pixels
+     * (no post-copy-out re-stamp gap) even when the top of the frame is split
+     * across several short redraw chunks. 8 == overlay height in main.cpp. */
+    if (start_row < 8 && s9x_port_strip_top_hook)
+        s9x_port_strip_top_hook((uint16_t *)strip_screen, SNES_WIDTH,
+                                (int)start_row, (int)end_row);
     const uint8_t *src = strip_screen;
     uint16_t      *dst = s9x_port_fb_window + start_row * FB_WIDTH;
     for (uint32_t y = start_row; y <= end_row; y++) {

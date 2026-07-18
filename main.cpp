@@ -65,10 +65,13 @@ extern "C" {
  * and exposes the window pointer for the FPS overlay. */
 extern "C" void s9x_port_anchor_screen(void);
 extern "C" uint16_t *s9x_port_fb_window;
-/* Hook called by the strip copy-out just before the top strip is published,
- * so the FPS overlay can be stamped into the frame's own pixels instead of
- * into the live single-buffered FB after the fact (which flickered). */
-extern "C" void (*s9x_port_strip_top_hook)(uint16_t *strip, int stride);
+/* Hook called by the strip copy-out just before it publishes a chunk whose
+ * rows overlap the overlay band, so the FPS overlay can be stamped into the
+ * frame's own pixels instead of into the live single-buffered FB after the
+ * fact (which flickered). Args: strip base, stride, and the chunk's absolute
+ * [block_start, block_end] row range (strip physical row 0 == block_start). */
+extern "C" void (*s9x_port_strip_top_hook)(uint16_t *strip, int stride,
+                                           int block_start, int block_end);
 #else
 /* port glue — snes9x's render target, 256-wide RGB555 in PSRAM. */
 extern uint16_t *g_snes_private_screen;
@@ -663,15 +666,22 @@ static bool snes9x_load_rom_from_psram(uintptr_t psram_ptr, size_t romsize)
  * RENDER_TO_FB: target is the anchored framebuffer window (stride 320);
  * legacy: g_snes_private_screen (stride SNES_WIDTH) just before the blit,
  * so it rides along with it (incl. the core1 offload path) at no extra
- * sync cost. 8x8 font, white-on-black, cols 4..19 / rows 0..7. */
-static void draw_fps_overlay(uint16_t *screen, int stride)
+ * sync cost. 8x8 font, white-on-black, cols 4..19 / overlay rows 0..7.
+ *
+ * Draws overlay font rows [font_first, font_last] into destination rows
+ * [font_first - phys_base .. font_last - phys_base]. Full-overlay callers pass
+ * (0, 7, 0); the strip hook passes a sub-range so it can stamp only the rows a
+ * given copy-out chunk publishes (see fps_overlay_strip_hook). */
+#define FPS_OVERLAY_ROWS 8   /* must match the font_last+1 used below */
+static void draw_fps_overlay(uint16_t *screen, int stride,
+                             int font_first, int font_last, int phys_base)
 {
     const uint16_t fg = 0x7FFF;  /* white, RGB555 */
     const uint16_t bg = 0x0000;  /* black         */
     char d0 = (char)('0' + (g_fps / 10) % 10);
     char d1 = (char)('0' + (g_fps % 10));
-    for (int row = 0; row < 8; row++) {
-        uint16_t *dst = screen + row * stride + 4;
+    for (int row = font_first; row <= font_last; row++) {
+        uint16_t *dst = screen + (row - phys_base) * stride + 4;
         char s0 = getcharslicefrom8x8font(d0, row);  /* LSB = leftmost pixel */
         char s1 = getcharslicefrom8x8font(d1, row);
         for (int b = 0; b < 8; b++) { *dst++ = (s0 & 1) ? fg : bg; s0 >>= 1; }
@@ -680,15 +690,22 @@ static void draw_fps_overlay(uint16_t *screen, int stride)
 }
 
 #if HSTX && RENDER_TO_FB
-/* Registered as s9x_port_strip_top_hook: the strip copy-out calls this with
- * the top strip (stride SNES_WIDTH) just before it is published to the
- * framebuffer, so the overlay is baked into the frame's own pixels rather
- * than stamped into the live FB afterwards. The strip is 16 rows, the overlay
- * 8 — it fits. Runs once per rendered frame; the flag load is cheap. */
-static void fps_overlay_strip_hook(uint16_t *strip, int stride)
+/* Registered as s9x_port_strip_top_hook: the strip copy-out calls this just
+ * before it publishes a chunk whose rows overlap the overlay band, so the
+ * digits are baked into the frame's own pixels instead of stamped into the
+ * live FB afterwards (which flickered). A chunk publishes absolute rows
+ * [block_start, block_end] and strip physical row 0 == absolute block_start
+ * (the strip is repointed per chunk). Games that flush a short redraw across
+ * the top of the frame (DKC changes a PPU register within the first few
+ * scanlines) split the overlay band over several chunks — each must stamp
+ * only the overlay rows IT copies out, else one chunk carries the digits and
+ * the next overwrites the rest with game pixels, leaving a white sliver. */
+static void fps_overlay_strip_hook(uint16_t *strip, int stride,
+                                   int block_start, int block_end)
 {
-    if (settings.flags.displayFrameRate)
-        draw_fps_overlay(strip, stride);
+    if (!settings.flags.displayFrameRate) return;
+    int last = block_end < FPS_OVERLAY_ROWS - 1 ? block_end : FPS_OVERLAY_ROWS - 1;
+    draw_fps_overlay(strip, stride, block_start, last, block_start);
 }
 #endif
 
@@ -921,7 +938,7 @@ static void run_emulator(void)
              * they ride along with it (incl. the core1 offload) — no extra
              * sync, no single-buffered-scanout timing hazard. */
             if (settings.flags.displayFrameRate)
-                draw_fps_overlay(g_snes_private_screen, SNES_WIDTH);
+                draw_fps_overlay(g_snes_private_screen, SNES_WIDTH, 0, FPS_OVERLAY_ROWS - 1, 0);
 #if BLIT_ON_CORE1
             /* Hand the copy to core1's idle loop; core0 moves straight on
              * to emulating the next frame. */
