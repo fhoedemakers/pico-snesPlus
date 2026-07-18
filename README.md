@@ -140,6 +140,23 @@ How it works, and what to expect:
 
 ***
 
+## Metadata
+
+The emulator can display box art and a short text description for each ROM when a metadata pack is present on the SD card. With the pack installed, pressing **START** on a ROM in the file browser displays its metadata; the screensaver also shows random box art.
+
+A metadata pack can be downloaded from the [releases page](https://github.com/fhoedemakers/pico-snesPlus/releases) and extracted to the root of the SD card. It is installed under:
+
+```
+/metadata/SNES/
+├── images/   (box art, named by ROM CRC32)
+└── descr/    (text descriptions, named by ROM CRC32)
+```
+
+
+
+***
+
+
 ## Menu and in-game controls
 
 In the menu:
@@ -147,7 +164,7 @@ In the menu:
 - **Up/Down**: previous/next item, **Left/Right**: previous/next page.
 - **A**: open folder / start the selected game.
 - **B**: back to the parent folder.
-- **Start**: show game metadata and box art (a SNES metadata pack is not available yet, so there is nothing to show for now).
+- **Start**: show game metadata and box art.
 - **Select**: open the settings menu.
 
 In game:
