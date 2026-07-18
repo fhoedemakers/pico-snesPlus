@@ -1134,6 +1134,20 @@ int main()
 
     while (true) {
         if (selectedRom[0] == 0) {
+            /* Free the previous session's PSRAM ROM copy before the menu
+             * lists the directory. loadRomInPsRam only frees it lazily when
+             * the NEXT rom is picked, so without this the romlister sees
+             * romsize fewer free bytes after a quit and hides carts that
+             * would still fit (e.g. DKC's own 4 MB right after quitting it).
+             * Safe here: every path back to the menu has either never set
+             * Memory.ROM or already ran S9xDeinitMemory, which NULLs it.
+             * No-op on cold boot (ROM_FILE_ADDR == 0); guarded because on
+             * flash-only builds ROM_FILE_ADDR is a flash address, not a
+             * heap pointer. */
+            if (Frens::isPsramEnabled()) {
+                Frens::f_free((void *)ROM_FILE_ADDR);
+                ROM_FILE_ADDR = 0;
+            }
             const char *romExtensions = ".smc .sfc";
             menu("Pico-snes9x+", ErrorMessage, isFatalError, showSplash,
                  romExtensions, selectedRom);
