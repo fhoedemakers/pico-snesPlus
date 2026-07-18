@@ -93,9 +93,21 @@ jobs:
           #           $PICOTOOL info $file
           #       done
 
-          - name: Copy PCEMetadata.zip to workspace
-            run: |
-              cp /datalocal/upload/pico-infonesPlus/PCEMetadata.zip releases/PCEMetadata.zip
+          # - name: Copy PCEMetadata.zip to workspace
+          #   run: |
+          #     cp /datalocal/upload/pico-infonesPlus/PCEMetadata.zip releases/PCEMetadata.zip
+
+          # - name: Create release
+          #   uses: softprops/action-gh-release@v3
+          #   if: startsWith(github.ref, 'refs/tags/')  && github.event_name == 'push'
+          #   with:
+          #     files: |
+          #       releases/*.uf2
+          #       PCB/pico_nesPCB_v2.1.zip
+          #       PCB/Gerber_PicoNES_Mini_PCB_v2.0.zip
+          #       PCB/Gerber_PicoNES_Micro_v1.2.zip
+          #       releases/PCEMetadata.zip
+          #     body_path: CHANGELOG.md
 
           - name: Create release
             uses: softprops/action-gh-release@v3
@@ -106,7 +118,6 @@ jobs:
                 PCB/pico_nesPCB_v2.1.zip
                 PCB/Gerber_PicoNES_Mini_PCB_v2.0.zip
                 PCB/Gerber_PicoNES_Micro_v1.2.zip
-                releases/PCEMetadata.zip
               body_path: CHANGELOG.md
           
          
