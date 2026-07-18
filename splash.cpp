@@ -11,14 +11,15 @@ void splash()
     char s[SCREEN_COLS + 1];
     ClearScreen(bgcolorSplash);
 
-    strcpy(s, "Pico-snes9x");
-    putText(SCREEN_COLS / 2 - (strlen(s) + 4) / 2, 2, s, fgcolorSplash, bgcolorSplash);
+    strcpy(s, "Pico-");
+    int x = SCREEN_COLS / 2 - strlen("Pico-SNES+") / 2;
+    putText(x, 2, s, fgcolorSplash, bgcolorSplash);
 
-    putText((SCREEN_COLS / 2 - (strlen(s)) / 2) + 9, 2, "S", CRED, bgcolorSplash);
-    putText((SCREEN_COLS / 2 - (strlen(s)) / 2) + 10, 2, "N", CGREEN, bgcolorSplash);
-    putText((SCREEN_COLS / 2 - (strlen(s)) / 2) + 11, 2, "E", CBLUE, bgcolorSplash);
-    putText((SCREEN_COLS / 2 - (strlen(s)) / 2) + 12, 2, "S", CLIGHTBLUE, bgcolorSplash);
-    putText((SCREEN_COLS / 2 - (strlen(s)) / 2) + 13, 2, "+", fgcolorSplash, bgcolorSplash);
+    putText(x + 5, 2, "S", CRED, bgcolorSplash);
+    putText(x + 6, 2, "N", CGREEN, bgcolorSplash);
+    putText(x + 7, 2, "E", CBLUE, bgcolorSplash);
+    putText(x + 8, 2, "S", CLIGHTBLUE, bgcolorSplash);
+    putText(x + 9, 2, "+", fgcolorSplash, bgcolorSplash);
 
     strcpy(s, "SNES emulator for RP2350+PSRAM");
     putText(SCREEN_COLS / 2 - strlen(s) / 2, 3, s, fgcolorSplash, bgcolorSplash);

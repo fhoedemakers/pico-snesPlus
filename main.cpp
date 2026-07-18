@@ -1184,7 +1184,7 @@ int main()
                 ROM_FILE_ADDR = 0;
             }
             const char *romExtensions = ".smc .sfc";
-            menu("Pico-snes9x+", ErrorMessage, isFatalError, showSplash,
+            menu("Pico-snes+", ErrorMessage, isFatalError, showSplash,
                  romExtensions, selectedRom);
             showSplash = false;
             printf("Selected ROM: %s\n", selectedRom);
