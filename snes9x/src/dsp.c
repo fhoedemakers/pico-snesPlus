@@ -4,6 +4,7 @@
 #include "snes9x.h"
 #include "memmap.h"
 #include "dsp.h"
+#include "port_alloc.h"
 
 static uint8_t (*GetDSP)(uint16_t) = NULL;
 static void (*SetDSP)(uint8_t, uint16_t) = NULL;
@@ -15,31 +16,33 @@ static struct SDSP4 *DSP4;
 
 void S9xInitDSP(void)
 {
+	/* Pico port: the DSP state struct lives in PSRAM (abundant) rather than
+	 * the scarce internal-SRAM libc heap. Register traffic is infrequent
+	 * (game-logic cadence, not per-pixel), so PSRAM latency is negligible.
+	 * Only wire Get/SetDSP once the alloc succeeds; the S9xGet/SetDSP guards
+	 * below then degrade to open-bus instead of dereferencing NULL. */
+	SetDSP = NULL;
+	GetDSP = NULL;
+
 	switch (Settings.DSP)
 	{
 	case 1: /* DSP1 */
-		DSP1 = malloc(sizeof(*DSP1));
-		SetDSP = &DSP1SetByte;
-		GetDSP = &DSP1GetByte;
+		DSP1 = port_alloc_psram(sizeof(*DSP1));
+		if (DSP1) { SetDSP = &DSP1SetByte; GetDSP = &DSP1GetByte; }
 		break;
 	case 2: /* DSP2 */
-		DSP2 = malloc(sizeof(*DSP2));
-		SetDSP = &DSP2SetByte;
-		GetDSP = &DSP2GetByte;
+		DSP2 = port_alloc_psram(sizeof(*DSP2));
+		if (DSP2) { SetDSP = &DSP2SetByte; GetDSP = &DSP2GetByte; }
 		break;
 	case 3: /* DSP3 */
-		DSP3 = malloc(sizeof(*DSP3));
-		SetDSP = &DSP3SetByte;
-		GetDSP = &DSP3GetByte;
+		DSP3 = port_alloc_psram(sizeof(*DSP3));
+		if (DSP3) { SetDSP = &DSP3SetByte; GetDSP = &DSP3GetByte; }
 		break;
 	case 4: /* DSP4 */
-		DSP4 = malloc(sizeof(*DSP4));
-		SetDSP = &DSP4SetByte;
-		GetDSP = &DSP4GetByte;
+		DSP4 = port_alloc_psram(sizeof(*DSP4));
+		if (DSP4) { SetDSP = &DSP4SetByte; GetDSP = &DSP4GetByte; }
 		break;
 	default:
-		SetDSP = NULL;
-		GetDSP = NULL;
 		break;
 	}
 }
@@ -49,19 +52,23 @@ void S9xResetDSP(void)
 	switch (Settings.DSP)
 	{
 	case 1: /* DSP1 */
+		if (!DSP1) break;
 		memset(DSP1, 0, sizeof(*DSP1));
 		DSP1->waiting4command = true;
 		DSP1->first_parameter = true;
 		break;
 	case 2: /* DSP2 */
+		if (!DSP2) break;
 		memset(DSP2, 0, sizeof(*DSP2));
 		DSP2->waiting4command = true;
 		break;
 	case 3: /* DSP3 */
+		if (!DSP3) break;
 		memset(DSP3, 0, sizeof(*DSP3));
 		DSP3_Reset();
 		break;
 	case 4: /* DSP4 */
+		if (!DSP4) break;
 		memset(DSP4, 0, sizeof(*DSP4));
 		DSP4->waiting4command = true;
 		break;
@@ -70,12 +77,13 @@ void S9xResetDSP(void)
 
 uint8_t S9xGetDSP (uint16_t address)
 {
-	return ((*GetDSP)(address));
+	return GetDSP ? ((*GetDSP)(address)) : OpenBus;
 }
 
 void S9xSetDSP (uint8_t byte, uint16_t address)
 {
-	(*SetDSP)(byte, address);
+	if (SetDSP)
+		(*SetDSP)(byte, address);
 }
 
 /***********************************************************************************

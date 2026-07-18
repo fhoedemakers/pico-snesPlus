@@ -8,6 +8,57 @@
 #include "dma.h"
 #include "display.h"
 #include "srtc.h"
+#include "fxemu.h"
+#include "sa1.h"
+
+/* GSU (SuperFX) SFR GO flag — mirrors FLG_G in fxinst.h, which isn't
+ * included here because its ROM()/RAM() macros would collide. */
+#define SFX_FLG_G 0x20
+
+/* CPU-side write into the GSU register window 0x3000-0x32ff. Ported from
+ * CATSFC S9xSetSuperFX (ppu.c): several registers have side effects, the
+ * critical one being 0x301f (R15 high byte) — writing it is what starts
+ * the GSU. A plain store here leaves the chip idle forever (black screen,
+ * audio still playing, SFR stuck at 0). */
+static void S9xSetSuperFX(uint8_t Byte, uint16_t Address)
+{
+   uint8_t old_fill_ram;
+
+   if (!Settings.SuperFX)
+      return; /* window is unbacked without the chip: drop the write */
+
+   old_fill_ram = Memory.FillRAM[Address];
+   Memory.FillRAM[Address] = Byte;
+
+   switch (Address)
+   {
+      case 0x3030: /* SFR low: GO flag transitions */
+         if ((old_fill_ram ^ Byte) & SFX_FLG_G)
+         {
+            if (Byte & SFX_FLG_G)
+               S9xSuperFXExec();
+            else
+               FxFlushCache();
+         }
+         break;
+      case 0x3034: /* PBR   */
+      case 0x3036: /* ROMBR */
+         Memory.FillRAM[Address] &= 0x7f;
+         break;
+      case 0x3038: /* SCBR: screen base changed */
+         fx_dirtySCBR();
+         break;
+      case 0x303c: /* RAMBR */
+         fx_updateRamBank(Byte);
+         break;
+      case 0x301f: /* R15 high byte: kick the GSU */
+         Memory.FillRAM[0x3030] |= SFX_FLG_G;
+         S9xSuperFXExec();
+         break;
+      default:
+         break;
+   }
+}
 
 extern const uint8_t mul_brightness [16][32];
 
@@ -179,8 +230,12 @@ void S9xSetPPU(uint8_t Byte, uint16_t Address)
             PPU.BGMode = Byte & 7;
             /* BJ: BG3Priority only takes effect if BGMode==1 and the bit is set */
             PPU.BG3Priority  = ((Byte & 0x0f) == 0x09);
+#if !RENDER_TO_FB /* force-lores: interlace doubles DrawBackgroundMode5's
+                   * row range mid-frame — must never be set when rendering
+                   * into the live framebuffer (see gfx.c). */
             if (PPU.BGMode == 5 || PPU.BGMode == 6)
                IPPU.Interlace = (bool) (Memory.FillRAM[0x2133] & 1);
+#endif
          }
          break;
       case 0x2106: /* Mosaic pixel size and enable */
@@ -501,8 +556,10 @@ void S9xSetPPU(uint8_t Byte, uint16_t Address)
                FLUSH_REDRAW();
                if ((Memory.FillRAM [0x2133] ^ Byte) & 2)
                   IPPU.OBJChanged = true;
+#if !RENDER_TO_FB /* force-lores: see 0x2105 above */
                if (PPU.BGMode == 5 || PPU.BGMode == 6)
                   IPPU.Interlace = (bool) (Byte & 1);
+#endif
             }
          }
          break;
@@ -605,10 +662,21 @@ void S9xSetPPU(uint8_t Byte, uint16_t Address)
    }
    else
    {
+      if (Settings.SA1)
+      {
+         if (Address >= 0x2200 && Address < 0x23ff)
+            S9xSetSA1(Byte, Address);
+         else
+            Memory.FillRAM[Address] = Byte;
+         return;
+      }
       if (Address == 0x2801 && Settings.SRTC) /* Dai Kaijyu Monogatari II */
          S9xSetSRTC(Byte, Address);
       else if (Address >= 0x3000 && Address < 0x3300)
+      {
+         S9xSetSuperFX(Byte, Address);
          return;
+      }
    }
    Memory.FillRAM[Address] = Byte;
 }
@@ -836,6 +904,9 @@ uint8_t S9xGetPPU(uint16_t Address)
    }
    else
    {
+      if (Settings.SA1 && Address >= 0x2200)
+         return S9xGetSA1(Address);
+
       if (Settings.SRTC && Address == 0x2800)
          return S9xGetSRTC(Address);
 
@@ -1322,7 +1393,15 @@ uint8_t S9xGetCPU(uint16_t Address)
          if (Memory.FillRAM [0x4016] & 1)
             return 0;
 
-         if (PPU.Joypad1ButtonReadPos >= 16) /* Joypad 1 is enabled */
+         /* The SNES Mouse packet is 32 bits, not 16: after the first 16
+          * (latched by the auto-read, which also leaves the shift position
+          * at 16), Nintendo's mouse driver clocks $4016 another 16 times
+          * for the motion byte pair (bits 31..16 — pos^15 keeps walking
+          * them in packet order). Mario Paint reads exactly this way and
+          * treats a mouse whose motion bits stick at 1 as absent. Plain
+          * pads keep the real-hardware behavior of returning 1 once the
+          * 16 button bits are exhausted. */
+         if (PPU.Joypad1ButtonReadPos >= (IPPU.Controller == SNES_MOUSE ? 32 : 16))
             return 1;
 
          return (IPPU.Joypads[0] >> (PPU.Joypad1ButtonReadPos++ ^ 15)) & 1;
@@ -1788,7 +1867,11 @@ void S9xProcessMouse(int32_t which1)
       else
          IPPU.Mouse [which1] |= delta_y << 24;
 
-      IPPU.Joypads [1] = IPPU.Mouse [which1];
+      /* Port 1, not port 2 as upstream had it: Mario Paint's game logic
+       * only accepts the mouse in port 1 (it reads the port-2 packet too,
+       * then ignores it — verified against the real driver's per-frame
+       * $4218 signature check + $4016 motion clocking). */
+      IPPU.Joypads [0] = IPPU.Mouse [which1];
    }
 }
 

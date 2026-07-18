@@ -9,6 +9,7 @@
 #include "gfx.h"
 #include "apu.h"
 #include "port_alloc.h"
+#include <stdio.h>
 
 static const uint8_t BitShifts[8][4] =
 {
@@ -160,10 +161,20 @@ void DrawLargePixel16Sub1_2(uint32_t Tile, int32_t Offset, uint32_t StartPixel, 
 bool S9xInitGFX(void)
 {
    /* Pico port: LocalState is ~22 KB of scanline/sprite scratch
-    * (LineData[240] + LineMatrixData[240] + OBJLines[239]). Per-scanline
-    * access, ~14400 lookups/sec — PSRAM handles it. SRAM is too tight
-    * after WRAM (128 KB), Map/MapInfo (~20 KB), IAPU.RAM (64 KB) etc. */
-   LocalState = port_alloc_psram(sizeof(*LocalState));
+    * (LineData[240] + LineMatrixData[240] + OBJLines[239]). OBJLines is
+    * walked per scanline even on frameskipped frames (S9xSetupOBJ /
+    * RTOFlags), LineData written per scanline on rendered frames — SRAM
+    * if the heap can afford it, PSRAM otherwise. port_alloc_free()
+    * discriminates by address, so the fallback needs no bookkeeping. */
+   LocalState = port_alloc_sram(sizeof(*LocalState));
+   if (LocalState)
+      printf("GFX LocalState (%u B) in SRAM\n", (unsigned)sizeof(*LocalState));
+   else
+   {
+      LocalState = port_alloc_psram(sizeof(*LocalState));
+      printf("GFX LocalState (%u B) in PSRAM (SRAM heap full)\n",
+             (unsigned)sizeof(*LocalState));
+   }
    if (!LocalState)
       return false;
    memset(LocalState, 0, sizeof(*LocalState));
@@ -248,6 +259,7 @@ void S9xStartScreenRefresh(void)
    {
       IPPU.PreviousLine = IPPU.CurrentLine = 0;
 
+#if !RENDER_TO_FB
       if (PPU.BGMode == 5 || PPU.BGMode == 6)
          IPPU.Interlace = (Memory.FillRAM[0x2133] & 1);
       if (PPU.BGMode == 5 || PPU.BGMode == 6 || IPPU.Interlace)
@@ -274,6 +286,10 @@ void S9xStartScreenRefresh(void)
          }
       }
       else
+#endif /* !RENDER_TO_FB — force-lores: GFX.Screen is the live 320-wide
+        * SRAM framebuffer; the 512-wide/interlaced layouts don't fit it
+        * (and overflowed the 512-B-pitch private buffer too). Mode 5/6
+        * stays 256-wide-garbled but every write is contained. */
       {
          IPPU.RenderedScreenWidth = 256;
          IPPU.RenderedScreenHeight = PPU.ScreenHeight;
@@ -556,7 +572,15 @@ void S9xSetupOBJ(void)
       // uint8_t OBJOnLine[SNES_HEIGHT_EXTENDED][128];
 
       // We can't afford 30K on the stack. But maybe we have a better buffer to abuse?
+#if RENDER_TO_FB
+      /* GFX.SubScreen is a ~8.7 KB staging strip now — far too small.
+       * Use the dedicated PSRAM scratch (port_glue.cpp); same tier the
+       * full-size SubScreen lived in before the strip renderer. */
+      extern uint8_t *s9x_port_objonline;
+      uint8_t (*OBJOnLine)[128] = (void *)s9x_port_objonline;
+#else
       uint8_t (*OBJOnLine)[128] = (void *)GFX.SubScreen;
+#endif
 
       /* We only initialise this per line, as needed. [Neb]
        * Bonus: We can quickly avoid looping if a line has no OBJs. */
@@ -720,16 +744,28 @@ static void DrawOBJS(bool OnMain, uint8_t D)
        * to stop SelectTileRenderer from being called when it causes
        * problems. */
       OnMain = false;
-      GFX.PixSize = 2;
-      if (IPPU.DoubleHeightPixels)
+      if (IPPU.HalfWidthPixels)
       {
-         DrawTilePtr = DrawTile16x2x2;
-         DrawClippedTilePtr = DrawClippedTile16x2x2;
+         /* force-lores half-width hires: the screen really is 256 wide
+          * and sprite coordinates are lores already — draw 1:1 instead
+          * of doubling into the next row. */
+         GFX.PixSize = 1;
+         DrawTilePtr = DrawTile16;
+         DrawClippedTilePtr = DrawClippedTile16;
       }
       else
       {
-         DrawTilePtr = DrawTile16x2;
-         DrawClippedTilePtr = DrawClippedTile16x2;
+         GFX.PixSize = 2;
+         if (IPPU.DoubleHeightPixels)
+         {
+            DrawTilePtr = DrawTile16x2x2;
+            DrawClippedTilePtr = DrawClippedTile16x2x2;
+         }
+         else
+         {
+            DrawTilePtr = DrawTile16x2;
+            DrawClippedTilePtr = DrawClippedTile16x2;
+         }
       }
    }
    else
@@ -1334,6 +1370,20 @@ static void DrawBackgroundMode5(uint32_t bg, uint8_t Z1, uint8_t Z2)
    {
       GFX.Pitch = GFX.RealPitch;
       GFX.PPL = GFX.PPLx2 >> 1;
+   }
+
+   /* Half-width rendering decimates each 8-hires-pixel char to 4 screen
+    * pixels; the offset math below already handles it (Left >> 1, +4 per
+    * char). Only ever set on the force-lores (RENDER_TO_FB) path. */
+   if (IPPU.HalfWidthPixels)
+   {
+      DrawHiResTilePtr        = DrawTile16HalfWidth;
+      DrawHiResClippedTilePtr = DrawClippedTile16HalfWidth;
+   }
+   else
+   {
+      DrawHiResTilePtr        = DrawTile16;
+      DrawHiResClippedTilePtr = DrawClippedTile16;
    }
 
    GFX.PixSize = 1;
@@ -2615,12 +2665,62 @@ void S9xUpdateScreen(void)
    if ((GFX.EndY = IPPU.CurrentLine - 1) >= PPU.ScreenHeight)
       GFX.EndY = PPU.ScreenHeight - 1;
 
+#if RENDER_TO_FB
+   /* The strip copy-out targets the centered window of the 240-row
+    * framebuffer; a mid-frame 224->239 overscan flip could push rows past
+    * its bottom edge before the host re-anchors. Clamp to the rows that
+    * exist below the anchor (s9x_port_max_endy from port_glue.cpp). */
+   {
+      extern int s9x_port_max_endy;
+      if ((int)GFX.EndY > s9x_port_max_endy)
+         GFX.EndY = s9x_port_max_endy;
+      if (GFX.StartY > GFX.EndY)
+      {
+         IPPU.PreviousLine = IPPU.CurrentLine;
+         return;
+      }
+   }
+#endif
+
    /* XXX: Check ForceBlank? Or anything else? */
    PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
+
+#if RENDER_TO_FB
+   /* force-lores: render mode 5/6 blocks at true half width (even hires
+    * pixels only). The old containment let hires x >= 256 land one row
+    * below its source row; at every strip-chunk seam that spilled row went
+    * to the discarded guard row and the next chunk never redrew it — a
+    * black line through hires screens (DKC's "Nintendo presents"). Half
+    * width keeps every write on its own row AND at its proper position.
+    * Per block: FLUSH_REDRAW runs before a mode change is committed, so
+    * PPU.BGMode here is the mode in effect for [StartY, EndY]. Blocks are
+    * always 256-wide, so no pixel fixup is needed when the flag flips. */
+   IPPU.HalfWidthPixels = (PPU.BGMode == 5 || PPU.BGMode == 6);
+
+   /* Strip renderer: render the block in S9X_STRIP_ROWS-row chunks into
+    * the SRAM staging strips (port_glue.cpp), copying each chunk's
+    * finished rows into the framebuffer window as it completes. Scan-out
+    * then never sees mid-composite pixels. The renderer already handles
+    * arbitrary [StartY,EndY] blocks (mid-frame FLUSH_REDRAW), so finer
+    * chunking is safe; seam tiles take the existing clipped-tile paths.
+    * The loop body below is the unmodified single-block renderer. */
+   uint32_t s9x_full_endy = GFX.EndY;
+   uint32_t s9x_chunk;
+   for (s9x_chunk = GFX.StartY; s9x_chunk <= s9x_full_endy; s9x_chunk += S9X_STRIP_ROWS)
+   {
+      extern void s9x_port_strip_repoint(uint32_t row);
+      GFX.StartY = s9x_chunk;
+      GFX.EndY   = s9x_chunk + S9X_STRIP_ROWS - 1;
+      if (GFX.EndY > s9x_full_endy)
+         GFX.EndY = s9x_full_endy;
+      s9x_port_strip_repoint(s9x_chunk);
+      GFX.S = GFX.Screen;
+#endif
 
    starty = GFX.StartY;
    endy   = GFX.EndY;
 
+#if !RENDER_TO_FB /* force-lores: see S9xStartScreenRefresh */
    if (PPU.BGMode == 5 || PPU.BGMode == 6 || IPPU.Interlace || IPPU.DoubleHeightPixels)
    {
       if (PPU.BGMode == 5 || PPU.BGMode == 6 || IPPU.Interlace)
@@ -2678,6 +2778,7 @@ void S9xUpdateScreen(void)
          }
       }
    }
+#endif /* !RENDER_TO_FB */
 
    black = BLACK | (BLACK << 16);
 
@@ -3084,6 +3185,15 @@ void S9xUpdateScreen(void)
          RenderScreen(GFX.Screen, false, true, SUB_SCREEN_DEPTH);
       }
    }
+
+#if RENDER_TO_FB
+      /* Chunk fully composited — publish it to the framebuffer window. */
+      {
+         extern void s9x_port_strip_copyout(uint32_t start_row, uint32_t end_row);
+         s9x_port_strip_copyout(GFX.StartY, GFX.EndY);
+      }
+   } /* strip chunk loop */
+#endif
 
    if (PPU.BGMode != 5 && PPU.BGMode != 6 && IPPU.DoubleWidthPixels)
    {

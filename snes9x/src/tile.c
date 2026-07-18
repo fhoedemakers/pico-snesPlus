@@ -353,7 +353,8 @@ static void WRITE_4PIXELS16_HALFWIDTH(int32_t Offset, uint8_t* Pixels, uint16_t*
 
    for (N = 0; N < 4; N += 2)
    {
-      if (GFX.Z1 > Depth [N] && (Pixel = Pixels[N]))
+      /* Depth is tested at the same halved cell the pixel is written to. */
+      if (GFX.Z1 > Depth [N >> 1] && (Pixel = Pixels[N]))
       {
          Screen [N >> 1] = ScreenColors [Pixel];
          Depth [N >> 1] = GFX.Z2;
@@ -369,7 +370,7 @@ static void WRITE_4PIXELS16_FLIPPED_HALFWIDTH(int32_t Offset, uint8_t* Pixels, u
 
    for (N = 0; N < 4; N += 2)
    {
-      if (GFX.Z1 > Depth [N] && (Pixel = Pixels[2 - N]))
+      if (GFX.Z1 > Depth [N >> 1] && (Pixel = Pixels[2 - N]))
       {
          Screen [N >> 1] = ScreenColors [Pixel];
          Depth [N >> 1] = GFX.Z2;

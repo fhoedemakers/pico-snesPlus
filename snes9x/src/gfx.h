@@ -175,17 +175,16 @@ static INLINE uint16_t COLOR_SUB(uint16_t C1, uint16_t C2)
 #ifdef NO_ZERO_LUT
 static INLINE uint16_t COLOR_SUB1_2(uint16_t C1, uint16_t C2)
 {
-   // if the top bit of the color value is zero then the value is zero, otherwise its just the value
+   /* LUT-free equivalent of the GFX.ZERO table: (C1 - C2) / 2 with
+    * per-channel clamp to zero. After the >>1 each channel's borrow guard
+    * sits on the top bit of its field (RGB_HI_BITS_MASK): set = no borrow,
+    * keep the 4-bit halved value below it; clear = borrow, clamp to 0.
+    * In RGB555 every guard bit is its field's LSB << 4, so
+    * (guards - (guards >> 4)) expands each set guard into a keep-mask for
+    * the value bits beneath it (and strips the guard bit itself). */
    int C = (((C1) | RGB_HI_BITS_MASKx2) - ((C2) & RGB_REMOVE_LOW_BITS_MASK)) >> 1;
-   int r, g, b;
-   DECOMPOSE_PIXEL(C, r, g, b);
-   if (r & 0x10)
-      r = 0;
-   if (g & GREEN_HI_BIT)
-      g = 0;
-   if (b & 0x10)
-      b = 0;
-   return BUILD_PIXEL(r, g, b);
+   int guards = C & RGB_HI_BITS_MASK;
+   return (uint16_t)(C & (guards - (guards >> 4)));
 }
 #else
 #define COLOR_SUB1_2(C1, C2) \

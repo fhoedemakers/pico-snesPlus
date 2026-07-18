@@ -8,6 +8,7 @@
 #include "gfx.h"
 #include "apu.h"
 #include "dma.h"
+#include "sa1.h"
 
 /* Pico port: keep the per-opcode hot path out of flash XIP. Cost is a few
  * hundred bytes of SRAM (S9xMainLoop + S9xDoHBlankProcessing). cpuops.c
@@ -68,6 +69,15 @@ void __not_in_flash_func(S9xMainLoop)()
       CPU.PCAtOpcodeStart = CPU.PC;
       CPU.Cycles += CPU.MemSpeed;
       (*ICPU.S9xOpcodes [*CPU.PC++].S9xOpcode)();
+
+      /* SA-1 runs interleaved with the main CPU (up to 3 SA-1 opcodes per
+       * main opcode). SA1.Executing is false for non-SA-1 carts, so the
+       * branch is a cheap, predictable no-op there. Unlike SuperFX (run
+       * once per scanline at HBLANK_END), the SA-1 communicates with the
+       * main CPU through shared RAM/IRQs and needs fine interleaving. */
+      if (SA1.Executing)
+         S9xSA1MainLoop();
+
       if (CPU.Cycles >= CPU.NextEvent)
          S9xDoHBlankProcessing();
    } while(true);
@@ -114,6 +124,8 @@ void __not_in_flash_func(S9xDoHBlankProcessing)()
          IPPU.HDMA = S9xDoHDMA(IPPU.HDMA);
       break;
    case HBLANK_END_EVENT:
+      if (Settings.SuperFX)
+         S9xSuperFXExec();
 #ifndef USE_BLARGG_APU
       CPU.Cycles -= Settings.H_Max;
       if (IAPU.APUExecuting)

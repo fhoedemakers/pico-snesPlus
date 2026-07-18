@@ -1,10 +1,10 @@
-# pico_snesPlus — snes9x port for RP2350 + PSRAM, using the pico_shared
+# pico-snesPlus — snes9x port for RP2350 + PSRAM, using the pico_shared
 # emulator framework. First-target build: HSTX (RGB555) on HW_CONFIG=8
 # (Adafruit Fruit Jam). PicoDVI/RGB444 path is a follow-up.
 
 cmake_minimum_required(VERSION 3.13)
 
-set(projectname pico_snesPlus)
+set(projectname picosnesPlus)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -25,7 +25,7 @@ message("* Current build type is : ${CMAKE_BUILD_TYPE}")
 
 # Hardware / board selection. RP2350+PSRAM+HSTX only for this build.
 if(NOT HW_CONFIG)
-    set(HW_CONFIG 8 CACHE STRING "Select the hardware configuration for your board")
+    set(HW_CONFIG 2 CACHE STRING "Select the hardware configuration for your board")
 endif()
 if(NOT USE_HSTX)
     set(USE_HSTX 1 CACHE STRING "Use HSTX for display output")
@@ -37,13 +37,65 @@ if(NOT PICO_BOARD)
     set(PICO_BOARD pico2 CACHE STRING "Board type")
 endif()
 if(PICO_PLATFORM STREQUAL "rp2040")
-    message(FATAL_ERROR "pico_snesPlus requires RP2350 with PSRAM. Pick a HW_CONFIG that selects an RP2350 board (5, 8, 13, 14).")
+    message(FATAL_ERROR "pico-snesPlus requires RP2350 with PSRAM. Pick a HW_CONFIG that selects an RP2350 board (2, 8, 13, 14).")
 endif()
 if(NOT PSRAM_CS_PIN OR PSRAM_CS_PIN EQUAL 0)
-    message(FATAL_ERROR "pico_snesPlus requires PSRAM. Selected board has no PSRAM_CS_PIN.")
+    message(FATAL_ERROR "pico-snesPlus requires PSRAM. Selected board has no PSRAM_CS_PIN.")
 endif()
 
 add_definitions(-DNDEBUG)
+
+# HDMI data-island audio ring: 208 packets instead of the driver's 256
+# default, saving 48 x 144 B = 6.9 KB of SRAM heap. The queue never holds
+# more than HSTX_AUDIO_DI_HIGH_WATERMARK (200) packets — producers stop
+# there — so entries beyond ~200 are dead weight; 8 spare slots cover the
+# head/tail full-vs-empty distinction. The watermark itself must stay at
+# 200: the menu wavplayer pushes a whole frame of audio (~184 packets)
+# once per 60 Hz menu tick and needs that much queue depth. Directory-
+# scoped (add_definitions) so it reaches the pico_shared driver build.
+add_definitions(-DDI_RING_BUFFER_SIZE=208)
+
+# Opt in to the pico_shared HSTX driver's SCRATCH_X core1 stack (frees the
+# driver's 4 KB static stack buffer back to the SRAM heap). Pairs with
+# PICO_CORE1_STACK_SIZE=4096 below, which sizes the scratch reservation to
+# the full bank. Other emulators keep the driver's default static stack
+# until they opt in themselves.
+add_definitions(-DHSTX_CORE1_STACK_IN_SCRATCH_X=1)
+
+# A/B lever: force the 32 KB FillRAM PPU/CPU register mirror into PSRAM
+# even when it would fit in SRAM. FillRAM in SRAM removes QMI traffic but
+# adds core0 load on the striped-SRAM fabric shared with the HSTX DMA and
+# core1 code fetches — flip this to isolate whether SRAM-fabric contention
+# is behind display resyncs / audio underruns. Directory-scoped so it
+# reaches the snes9x_core build (memmap.c).
+option(FILLRAM_IN_PSRAM "Force FillRAM into PSRAM (A/B contention test)" OFF)
+if(FILLRAM_IN_PSRAM)
+    add_definitions(-DFILLRAM_IN_PSRAM=1)
+    message(STATUS "FILLRAM_IN_PSRAM=1 — FillRAM forced to PSRAM")
+endif()
+
+# Strip renderer: snes9x renders each scanline block in S9X_STRIP_ROWS-row
+# chunks into small SRAM staging strips (screen/sub/Z/subZ, ~26 KB total,
+# port_glue.cpp) and copies each finished chunk into the centered window of
+# the SRAM HSTX framebuffer. Replaces the private PSRAM screen + blit:
+# ALL per-pixel render traffic (screen writes, Z clears/RMW, subscreen
+# composite, blit read-back — the measured bottleneck behind the 54-57 fps
+# plateau) moves to SRAM, and scan-out only ever sees fully-composited
+# rows, so no mid-render flicker (a direct-to-framebuffer render showed a
+# rolling flicker band; a whole-frame SRAM buffer doesn't fit). To make the
+# strips fit, FillRAM is forced to PSRAM (memmap.c; measured fps-neutral).
+# OFF restores the legacy private-screen+blit path for an A/B.
+# Directory-scoped so it reaches the snes9x_core build (gfx.c/ppu.c carry a
+# force-lores guard that contains mode 5/6/interlace writes to the strips).
+option(RENDER_TO_FB "Strip-render snes9x via SRAM strips into the HSTX framebuffer" ON)
+if(RENDER_TO_FB AND DEFINED GPIOHSTXD0)
+    add_definitions(-DRENDER_TO_FB=1)
+    message(STATUS "RENDER_TO_FB=1 — snes9x renders directly into the HSTX framebuffer")
+elseif(RENDER_TO_FB)
+    # Non-HSTX (PicoDVI / FORCE_DVI) build: no hstx framebuffer to anchor to.
+    set(RENDER_TO_FB OFF)
+    message(STATUS "RENDER_TO_FB ignored — requires an HSTX board configuration")
+endif()
 
 # TinyUSB family support + Pico SDK init (same dance as pico-infonesPlus).
 set(FAMILY rp2040)
@@ -134,21 +186,82 @@ target_compile_definitions(${projectname} PRIVATE
     ENABLE_VU_METER=${ENABLE_VU_METER}
     WIIPAD_DELAYED_START=${WIIPAD_DELAYED_START}
     ENABLEDVI=1
+    GENESIS_OVERCLOCK_HSTX_FIX=1
     DOUBLEFRAMEBUFFER=0
+    # MantaPad (081f:e401) is sold as both a NES- and a SNES-shaped pad with
+    # the same VID/PID. Default it to SNES mode here so all buttons work at
+    # connect (other emulators keep the NES default with Y-press upgrade).
+    MANTAPAD_DEFAULT_MODE=2
 )
 
 target_compile_definitions(${projectname} PRIVATE
     PICO_PIO_USE_GPIO_BASE=1
     PICO_STACK_SIZE=3072
-    # Pico SDK's default _sbrk returns -1 if the padded request would
-    # overshoot __StackLimit, even if the user-visible allocation would
-    # have fit. Newlib's malloc pads sbrk requests when growing the
-    # wilderness, so a 128 KB malloc can fail near the heap ceiling
-    # despite there being room for the bytes themselves. With this set,
-    # _sbrk caps at __StackLimit and returns whatever's available; newlib
-    # carves the chunk into that partial extension and succeeds.
-    PICO_USE_OPTIMISTIC_SBRK=1
+    # core1 boots on the linker-reserved SCRATCH_X stack (see hstx.c).
+    # Claim the full 4 KB bank: the .scratch_x data section is empty in
+    # HSTX builds (software-TMDS sections are GC'd), and the resync path
+    # printf on core1 needs the headroom (newlib vfprintf uses 1-2 KB).
+    PICO_CORE1_STACK_SIZE=4096
+    # Strict sbrk: any request that would cross __StackLimit fails with -1
+    # and malloc returns NULL (PICO_MALLOC_PANIC=0 below), letting the
+    # SRAM-first allocations fall back to PSRAM. OPTIMISTIC_SBRK=1 is
+    # NOT safe here: it grants a ceiling-crossing request partially while
+    # newlib's contiguous extend-top path books the full requested size,
+    # so malloc hands out blocks past __StackLimit — straight into the
+    # core1/core0 stacks in scratch X/Y (caused the HW_CONFIG=8 hardfault
+    # at game start: PIO USB's ~20 KB SRAM footprint pushed S9xInitMemory
+    # over the ceiling and the Map/MapInfo memsets wiped both stacks).
+    # Cost of strict mode: newlib pads sbrk requests to 4 KB pages, so up
+    # to ~4 KB of headroom at the very top of the heap goes unused.
+    PICO_USE_OPTIMISTIC_SBRK=0
+    # pico_malloc panics ("Out of memory") on failure by default, which
+    # defeats the SRAM-first-with-PSRAM-fallback allocations (FillRAM,
+    # MapInfo, gfx LocalState): the fallback path needs malloc to return
+    # NULL. All port allocation sites check for NULL.
+    PICO_MALLOC_PANIC=0
 )
+
+# -----------------------------------------------------------------------
+# Phase 0 profiling: enable per-frame time buckets and a 4-state A/B
+# toggle. Off by default so release builds are unchanged.
+option(PROFILE_BUCKETS "Enable per-frame profiling buckets and A/B toggles" OFF)
+if(PROFILE_BUCKETS)
+    target_compile_definitions(${projectname} PRIVATE PROFILE_BUCKETS=1)
+    message(STATUS "PROFILE_BUCKETS enabled — UART fps line includes us/frame buckets and cycles APU/pace bypass")
+endif()
+
+# Replace the pico_shared vsync-locked NTSC pacer with a soft time-based
+# 60 Hz pacer. Fixes a 10 fps loss caused by per-frame vsync alignment
+# when frameskip is on (see paceFrame comment in main.cpp). May introduce
+# tearing on the blit if it lands mid-scan.
+option(PACE_SOFT_60FPS "Use time-based (not vsync-locked) 60 Hz NTSC pacer" ON)
+if(PACE_SOFT_60FPS)
+    target_compile_definitions(${projectname} PRIVATE PACE_SOFT_60FPS=1)
+    message(STATUS "PACE_SOFT_60FPS enabled — free-running 60 Hz pacer (may tear)")
+endif()
+
+# Run the GFX.Screen (PSRAM) -> HSTX framebuffer (SRAM) blit on core1's
+# idle background-task hook instead of core0 (~2.5 ms per rendered frame
+# given back to emulation). See core1_blit_task in main.cpp. Only relevant
+# to the legacy private-screen path: with RENDER_TO_FB there is no blit.
+option(BLIT_ON_CORE1 "Off-load framebuffer blit to core1" ON)
+if(BLIT_ON_CORE1 AND NOT RENDER_TO_FB)
+    target_compile_definitions(${projectname} PRIVATE BLIT_ON_CORE1=1)
+    message(STATUS "BLIT_ON_CORE1 enabled — framebuffer blit runs on core1")
+elseif(BLIT_ON_CORE1)
+    message(STATUS "BLIT_ON_CORE1 ignored — RENDER_TO_FB renders directly into the framebuffer")
+endif()
+
+# Run S9xMixSamples + HDMI data-island encode on core1 (~850 us/frame
+# back to core0, and the DI queue stays continuously topped up instead of
+# starving against its 32 kHz drain). Sound state is guarded by a
+# hardware spinlock between core0's SPC700 DSP writes and core1's mix
+# chunks. See core1_mix_task in main.cpp / S9xSetAPUDSP in apu.c.
+option(MIX_ON_CORE1 "Off-load audio mixing to core1" ON)
+if(MIX_ON_CORE1)
+    target_compile_definitions(${projectname} PRIVATE MIX_ON_CORE1=1)
+    message(STATUS "MIX_ON_CORE1 enabled — audio mixing runs on core1")
+endif()
 
 if(DEFINED PICO_DEFAULT_UART_TX_PIN)
     target_compile_definitions(${projectname} PRIVATE
@@ -217,20 +330,28 @@ add_subdirectory(tusb_xinput xinput_host)
 target_link_options(${projectname} PRIVATE -Xlinker --print-memory-usage --data-sections)
 
 # ----- snes9x hot-path SRAM placement -------------------------------------
-# Strategy: hot snes9x C files have their entire .text renamed to
-# .time_critical_<basename> so the Pico SDK linker script (*(.time_critical*))
-# places them in SRAM. The linker auto-generates the flash->SRAM copy at boot.
-#   1. -fno-function-sections coalesces every function in the file into a
-#      single .text section. gc-sections then can't drop any one function —
-#      since all of them are reachable through dispatch tables / pointers,
-#      that's the desired behavior.
-#   2. PRE_LINK objcopy renames that monolithic .text to .time_critical_<x>.
+# Strategy: hot snes9x C files have both their .text and .rodata renamed
+# into .time_critical_* sections so the Pico SDK linker script
+# (*(.time_critical*)) places them in SRAM. The linker auto-generates the
+# flash->SRAM copy at boot.
+#   1. -fno-function-sections / -fno-data-sections coalesce every function
+#      and const object in the file into single .text / .rodata sections.
+#      gc-sections then can't drop any one function or table — since all
+#      are reachable through dispatch tables / pointers, that's desired.
+#   2. PRE_LINK objcopy renames those monolithic sections to
+#      .time_critical_<x> / .time_critical_rodata_<x>.
+# Moving .rodata pulls hot lookup tables out of the shared 16 KB XIP cache:
+# the five 65c816 dispatch tables in cpuops.c (5 KB) are read on every
+# emulated instruction; tile.c's odd/even planar tables (512 B) are hit
+# per tile. Total moved across all 12 files is ~7.7 KB.
 # Memory budget (HW_CONFIG=8, RP2350+PSRAM): all emulator buffers
 # (Memory.RAM 128K, IAPU.RAM 64K, Memory.Map 16K, VRAM, SRAM, FillRAM,
-# MapInfo, ScreenColors, TileCache, TileCached, bytes0x2000, GFX.Screen,
-# GFX.SubScreen, GFX.Z*, sound LocalState, gfx LocalState) live in PSRAM.
-# SRAM is reserved for static code (the hot snes9x files listed below
-# plus cpuops.c) and the HSTX framebuffer (.bss).
+# MapInfo, ScreenColors, TileCache, TileCached, bytes0x2000, sound
+# LocalState, gfx LocalState) live in PSRAM. Under RENDER_TO_FB the GFX
+# render targets are ~26 KB SRAM staging strips (FillRAM forced to PSRAM
+# to make room); when OFF they are full-size PSRAM buffers with the
+# legacy blit path. SRAM is otherwise reserved for static code (the hot
+# snes9x files listed below plus cpuops.c) and the HSTX framebuffer (.bss).
 set(SNES9X_SRAM_HOT_FILES
     cpuops.c    # 65816 opcode dispatch (every emulated CPU instr)
     spc700.c    # APUExecute — SPC700 interpreter (every audio cycle)
@@ -245,14 +366,42 @@ set(SNES9X_SRAM_HOT_FILES
     getset.c    # Get/Set helper inlines that didn't inline
     cpuexec.c   # S9xMainLoop / S9xDoHBlankProcessing
 )
+
+# A/B lever: move the SuperFX GSU interpreter (~52 KB) into SRAM.
+# Rationale: the GSU is ~38 % of emulation time on Star Fox. Its dispatch
+# tables are already in SRAM (.data, non-const), but fxinst.c's .text is in
+# flash — and on RP2350 the 16 KB XIP cache serves BOTH flash and PSRAM, so
+# the GSU streaming cart ROM out of PSRAM evicts its own interpreter code
+# from that cache on every fetch.
+#
+# MEASURED 2026-07-15 (Star Fox training, PROFILE_BUCKETS), and it is a
+# WASH — left OFF:
+#   OFF: total emu ~1038 ms/s, sfx ~399 ms/s, rest ~639 ms/s, ~31.7 fps
+#   ON : total emu ~1019 ms/s, sfx ~337 ms/s, rest ~682 ms/s, ~32.1 fps
+# The GSU really does get ~15 % faster (the cache contention is real), but
+# the 52 KB comes out of an SRAM heap arena that runs ~1 KB free, spilling
+# buffers to PSRAM and taxing everything else by the same amount (mainS,
+# pure CPU time, jumps 7.5 -> 21 ms/frame). Only worth revisiting if SRAM
+# is freed up elsewhere first.
+option(SUPERFX_IN_SRAM "Place the SuperFX GSU interpreter in SRAM (A/B; measured a wash)" OFF)
+if(SUPERFX_IN_SRAM)
+    list(APPEND SNES9X_SRAM_HOT_FILES
+        fxinst.c    # GSU opcode bodies — every GSU instruction
+        fxemu.c     # FxEmulate / fx_run driver
+    )
+    message(STATUS "SUPERFX_IN_SRAM=1 — GSU interpreter moved to SRAM (~52 KB)")
+endif()
+
 foreach(_src IN LISTS SNES9X_SRAM_HOT_FILES)
     get_filename_component(_stem "${_src}" NAME_WE)
     set_source_files_properties(snes9x/src/${_src} PROPERTIES
-        COMPILE_FLAGS "-fno-function-sections")
+        COMPILE_FLAGS "-fno-function-sections -fno-data-sections")
     add_custom_command(TARGET ${projectname} PRE_LINK
-        COMMAND ${CMAKE_OBJCOPY} --rename-section .text=.time_critical_${_stem}
+        COMMAND ${CMAKE_OBJCOPY}
+                --rename-section .text=.time_critical_${_stem}
+                --rename-section .rodata=.time_critical_rodata_${_stem}
                 "${CMAKE_BINARY_DIR}/CMakeFiles/${projectname}.dir/snes9x/src/${_src}.o"
-        COMMENT "Moving snes9x ${_src} to .time_critical (SRAM)"
+        COMMENT "Moving snes9x ${_src} .text+.rodata to .time_critical (SRAM)"
         VERBATIM)
 endforeach()
 
@@ -261,6 +410,8 @@ endforeach()
 # loop unrolling, and IPA cloning, which pay off heavily on branch-heavy
 # dispatch tables and per-pixel rasterizers. Code-size growth (~10-20 %)
 # is absorbed by SRAM headroom.
+# Measured 2026-07-15 on fxinst.c (SuperFX GSU interpreter): -O3 made no
+# difference at all — sfx=/fps identical to -O2 on Star Fox. Left off.
 # set(SNES9X_O3_FILES
 #     cpuops.c    # 65816 dispatch
 #     spc700.c    # APUExecute

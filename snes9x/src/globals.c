@@ -9,9 +9,15 @@
 #include "dma.h"
 #include "gfx.h"
 #include "soundux.h"
+#include "fxemu.h"
+#include "sa1.h"
 
 SICPU ICPU;
 SCPUState CPU;
+
+/* SA-1 coprocessor CPU + chip state (globals.c holds the single instance,
+ * like SuperFX above). ~32 KB (mostly the Map/WriteMap block tables). */
+SSA1 SA1;
 
 #ifndef USE_BLARGG_APU
 SAPU APU;
@@ -27,6 +33,10 @@ int32_t OpAddress = 0;
 CMemory Memory;
 
 uint8_t OpenBus = 0;
+
+/* SuperFX (GSU) link struct — set up by S9xInitSuperFX (memmap.c), consumed
+ * by FxReset. */
+FxInit_s SuperFX;
 
 SPPU PPU;
 InternalPPU IPPU;

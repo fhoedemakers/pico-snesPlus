@@ -9,6 +9,16 @@
 #include "dma.h"
 #include "srtc.h"
 #include "obc1.h"
+#include "fxemu.h"
+#include "sa1.h"
+#include "sa1.h"
+
+extern FxInit_s SuperFX;
+
+void S9xResetSuperFX(void)
+{
+   FxReset(&SuperFX);
+}
 
 void S9xResetCPU()
 {
@@ -67,8 +77,21 @@ static void CommonS9xReset()
    S9xResetAPU();
    if (Settings.DSP)
       S9xResetDSP();
+   /* After the FillRAM memset above: FxReset writes the GSU register space
+    * into FillRAM[0x3000]; S9xResetPPU then preserves 0x3000-0x32ff. */
+   if (Settings.SuperFX)
+      S9xResetSuperFX();
    if (Settings.OBC1)
       ResetOBC1();
+   if (Settings.SA1)
+      S9xSA1Init();
+   else
+      /* Quiesce a stale SA-1 left running by a previously loaded SA-1 cart.
+       * SA1.Executing (not Settings.SA1) is the S9xMainLoop gate (cpuexec.c),
+       * and only S9xSA1Init resets it — which is skipped for non-SA-1 carts.
+       * Without this, switching from e.g. Super Mario RPG to a plain LoROM
+       * runs the SA-1 CPU against a torn-down SA1.Map and bus-faults. */
+      SA1.Executing = false;
    if (Settings.C4)
       S9xInitC4();
 }
