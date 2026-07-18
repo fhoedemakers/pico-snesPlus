@@ -744,16 +744,28 @@ static void DrawOBJS(bool OnMain, uint8_t D)
        * to stop SelectTileRenderer from being called when it causes
        * problems. */
       OnMain = false;
-      GFX.PixSize = 2;
-      if (IPPU.DoubleHeightPixels)
+      if (IPPU.HalfWidthPixels)
       {
-         DrawTilePtr = DrawTile16x2x2;
-         DrawClippedTilePtr = DrawClippedTile16x2x2;
+         /* force-lores half-width hires: the screen really is 256 wide
+          * and sprite coordinates are lores already — draw 1:1 instead
+          * of doubling into the next row. */
+         GFX.PixSize = 1;
+         DrawTilePtr = DrawTile16;
+         DrawClippedTilePtr = DrawClippedTile16;
       }
       else
       {
-         DrawTilePtr = DrawTile16x2;
-         DrawClippedTilePtr = DrawClippedTile16x2;
+         GFX.PixSize = 2;
+         if (IPPU.DoubleHeightPixels)
+         {
+            DrawTilePtr = DrawTile16x2x2;
+            DrawClippedTilePtr = DrawClippedTile16x2x2;
+         }
+         else
+         {
+            DrawTilePtr = DrawTile16x2;
+            DrawClippedTilePtr = DrawClippedTile16x2;
+         }
       }
    }
    else
@@ -1358,6 +1370,20 @@ static void DrawBackgroundMode5(uint32_t bg, uint8_t Z1, uint8_t Z2)
    {
       GFX.Pitch = GFX.RealPitch;
       GFX.PPL = GFX.PPLx2 >> 1;
+   }
+
+   /* Half-width rendering decimates each 8-hires-pixel char to 4 screen
+    * pixels; the offset math below already handles it (Left >> 1, +4 per
+    * char). Only ever set on the force-lores (RENDER_TO_FB) path. */
+   if (IPPU.HalfWidthPixels)
+   {
+      DrawHiResTilePtr        = DrawTile16HalfWidth;
+      DrawHiResClippedTilePtr = DrawClippedTile16HalfWidth;
+   }
+   else
+   {
+      DrawHiResTilePtr        = DrawTile16;
+      DrawHiResClippedTilePtr = DrawClippedTile16;
    }
 
    GFX.PixSize = 1;
@@ -2660,6 +2686,17 @@ void S9xUpdateScreen(void)
    PPU.RangeTimeOver |= GFX.OBJLines[GFX.EndY].RTOFlags;
 
 #if RENDER_TO_FB
+   /* force-lores: render mode 5/6 blocks at true half width (even hires
+    * pixels only). The old containment let hires x >= 256 land one row
+    * below its source row; at every strip-chunk seam that spilled row went
+    * to the discarded guard row and the next chunk never redrew it — a
+    * black line through hires screens (DKC's "Nintendo presents"). Half
+    * width keeps every write on its own row AND at its proper position.
+    * Per block: FLUSH_REDRAW runs before a mode change is committed, so
+    * PPU.BGMode here is the mode in effect for [StartY, EndY]. Blocks are
+    * always 256-wide, so no pixel fixup is needed when the flag flips. */
+   IPPU.HalfWidthPixels = (PPU.BGMode == 5 || PPU.BGMode == 6);
+
    /* Strip renderer: render the block in S9X_STRIP_ROWS-row chunks into
     * the SRAM staging strips (port_glue.cpp), copying each chunk's
     * finished rows into the framebuffer window as it completes. Scan-out

@@ -212,7 +212,7 @@
              int32_t z; \
              for (z = Pixels - 2; z >= 0; z -= 2) \
              { \
-                if (GFX.Z1 > Depth [z]) \
+                if (GFX.Z1 > Depth [z >> 1]) \
                 { \
                    sp [z >> 1] = FUNCTION(sp + z, pixel); \
                    Depth [z >> 1] = GFX.Z2; \
@@ -233,7 +233,7 @@
              int32_t z; \
              for (z = Pixels - 2; z >= 0; z -= 2) \
              { \
-                if (GFX.Z1 > Depth [z]) \
+                if (GFX.Z1 > Depth [z >> 1]) \
                 { \
                    sp [z >> 1] = FUNCTION(sp + z, pixel); \
                    Depth [z >> 1] = GFX.Z2; \
