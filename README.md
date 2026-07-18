@@ -88,7 +88,7 @@ Notes per configuration:
 
 - **HW_CONFIG 2**: a plain Raspberry Pi Pico 2 does not work — it has no PSRAM. The Pimoroni Pico Plus 2 (with onboard PSRAM) is required.
 - **HW_CONFIG 8**: no additional hardware is required apart from a game controller. Audio is output through the monitor and the built-in speaker or headphone jack.
-- **HW_CONFIG 13**: Murmulator M2 was tested by [DynaMight1124](https://github.com/DynaMight1124). Device started bootlooping after a few minutes. Your mileage may vary.
+- **HW_CONFIG 13**: the Murmulator M2 was tested by [DynaMight1124](https://github.com/DynaMight1124). On their device, the emulator started bootlooping after a few minutes of play; the cause is not yet known. Your mileage may vary.
 - **HW_CONFIG 14**: the Feather RP2350 is sold in two variants: [with 8 MB PSRAM onboard](https://www.adafruit.com/product/6130) and [without PSRAM](https://www.adafruit.com/product/6000). On the variant without PSRAM, a PSRAM chip must be soldered onto the board separately.
 
 For wiring and assembly instructions, see the setup sections of the [pico-infonesPlus README](https://github.com/fhoedemakers/pico-infonesPlus#setup). Flashing works the same for every board: hold BOOTSEL while connecting the board over USB, then copy the `.uf2` file onto the USB drive that appears.
