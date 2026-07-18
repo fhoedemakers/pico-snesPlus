@@ -116,12 +116,23 @@ Every supported controller delivers the full SNES button set (B, Y, Select, Star
 | NES controller on the GPIO NES port | Positional: A→B, B→Y (jump/run); Select/Start/d-pad 1:1 |
 | USB keyboard | Z=B, X=A, C=X, V=Y, Q=L, W=R, A=Select, S=Start, arrows=d-pad |
 | PS Classic | Cross→B, Circle→A, Square→Y, Triangle→X (shoulders not mapped yet) |
+| USB mouse | Emulates the SNES Mouse for Mario Paint — see [SNES Mouse](#snes-mouse-usb-mouse) below |
 
 Two players: a second USB pad is player 2. When a USB pad is connected, the GPIO NES/SNES pad and the Wii Classic pad act as player 2; without one they are player 1.
 
 The settings menu contains a controller test screen that shows which button the emulator receives for each press.
 
 See the [pico-infonesPlus README](https://github.com/fhoedemakers/pico-infonesPlus#gamecontroller-support) for general controller notes and troubleshooting.
+
+### SNES Mouse (USB mouse)
+
+Plug in any USB mouse and it becomes a [SNES Mouse](https://en.wikipedia.org/wiki/Super_NES_Mouse) — no setting to change. Start Mario Paint and the hand cursor follows the mouse; left and right buttons map 1:1. Games without mouse support simply ignore it.
+
+How it works, and what to expect:
+
+- **The mouse occupies controller port 1 while it is plugged in**, exactly like connecting the real peripheral to the console's first controller socket (which is where Mario Paint expects it). The game ignores player 1's pad for as long as the mouse is connected — unplug the mouse and the pad is player 1 again. Both directions work mid-game, no reset needed.
+- **Player 2 and the menu are unaffected.** A second pad keeps working, and Select + Start on any pad still opens the settings menu, mouse plugged in or not.
+- **Motion is passed through as relative movement**, the way the real mouse reports it: the emulator hands the game the raw mouse deltas (halved once, because modern optical mice are far finer than the ~50 dpi original) and the game moves its own cursor — so edge behavior, cursor limits and any in-game speed settings behave exactly as on original hardware. Movement is capped at the real mouse's maximum of 63 counts per frame. To change the sensitivity, adjust `SNES_MOUSE_SENS_DIV` in `snes9x/src/port_glue.cpp` and rebuild.
 
 ***
 

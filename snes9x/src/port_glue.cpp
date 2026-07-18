@@ -307,7 +307,50 @@ extern "C" uint32_t S9xReadJoypad(int32_t port)
     return out;
 }
 
-extern "C" bool S9xReadMousePosition(int32_t, int32_t *, int32_t *, uint32_t *) { return false; }
+/* SNES Mouse (Mario Paint) — fed from the USB HID mouse state pico_shared
+ * accumulates (hid_app.cpp). The real peripheral is a pure delta device, so
+ * no absolute cursor is kept here: the core only diffs what we return
+ * against its own IPPU.PrevMouseX/Y (which it then sets to our value), so
+ * returning PrevMouse plus the pending motion hands it exact deltas and
+ * stays in sync with the game's cursor by construction — across the game's
+ * own edge clamping, its speed scaling, and S9xReset re-centering. (A
+ * screen-clamped mirror cursor drifts against the game's cursor at every
+ * edge rub and makes screen borders intermittently unreachable.)
+ * The divisor tames modern 800-1600 dpi mice; the queue keeps sub-divisor
+ * remainders so slow movements aren't truncated away, and saturates at one
+ * max-rate frame (+-63 SNES counts) like the real mouse's motion counter.
+ * Runs once per frame from S9xMainLoop on core0 — same core as tuh_task(),
+ * so no locking needed. */
+#define SNES_MOUSE_SENS_DIV 2
+
+extern "C" bool S9xReadMousePosition(int32_t which1, int32_t *x, int32_t *y, uint32_t *buttons)
+{
+    if (which1 != 0)
+        return false;
+    io::MouseState &m = io::getCurrentMouseState();
+    if (!m.connected)
+        return false;
+
+    static int32_t qx, qy; /* pending motion, raw HID counts */
+    qx += m.dx;
+    qy += m.dy;
+    m.dx = m.dy = m.wheel = 0;
+
+    const int32_t qcap = 63 * SNES_MOUSE_SENS_DIV;
+    if (qx > qcap) qx = qcap; else if (qx < -qcap) qx = -qcap;
+    if (qy > qcap) qy = qcap; else if (qy < -qcap) qy = -qcap;
+
+    const int32_t step_x = qx / SNES_MOUSE_SENS_DIV;
+    const int32_t step_y = qy / SNES_MOUSE_SENS_DIV;
+    qx -= step_x * SNES_MOUSE_SENS_DIV;
+    qy -= step_y * SNES_MOUSE_SENS_DIV;
+
+    *x = IPPU.PrevMouseX[0] + step_x;
+    *y = IPPU.PrevMouseY[0] + step_y;
+    *buttons = m.buttons & 3; /* TinyUSB bit0=left, bit1=right — same layout the core packs */
+    return true;
+}
+
 extern "C" bool S9xReadSuperScopePosition(int32_t *, int32_t *, uint32_t *)    { return false; }
 extern "C" bool JustifierOffscreen(void)                                       { return true; }
 extern "C" void JustifierButtons(uint32_t *)                                   { }

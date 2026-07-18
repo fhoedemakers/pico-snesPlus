@@ -40,8 +40,27 @@ void  port_alloc_free(void *p)       { free(p); }
 
 /* ---- input / peripheral stubs ---------------------------------------- */
 uint32_t S9xReadJoypad(int32_t port) { (void)port; return 0; }
+
+/* Scripted SNES Mouse (env MOUSE=1): circles the cursor around screen
+ * center (so deltas keep flowing however long the run) and holds the left
+ * button for 10 frames from MOUSE_CLICK on — exercises the core mouse path
+ * (Mario Paint) that port_glue.cpp feeds from the USB HID mouse on device.
+ * Returns false (no mouse) when MOUSE is unset, keeping existing A/B
+ * render runs unchanged. */
+#include <math.h>
+static int      mouse_enabled;
+static uint32_t mouse_click = UINT32_MAX;
+static uint32_t mouse_frame;
+
 bool S9xReadMousePosition(int32_t p, int32_t *x, int32_t *y, uint32_t *b)
-{ (void)p; (void)x; (void)y; (void)b; return false; }
+{
+    if (!mouse_enabled || p != 0) return false;
+    double a = (double)mouse_frame * 0.05;
+    *x = SNES_WIDTH  / 2 + (int32_t)(64.0 * cos(a));
+    *y = SNES_HEIGHT / 2 + (int32_t)(48.0 * sin(a));
+    *b = (mouse_frame >= mouse_click && mouse_frame < mouse_click + 10) ? 1 : 0;
+    return true;
+}
 bool S9xReadSuperScopePosition(int32_t *x, int32_t *y, uint32_t *b)
 { (void)x; (void)y; (void)b; return false; }
 bool JustifierOffscreen(void) { return true; }
@@ -186,7 +205,9 @@ int main(int argc, char **argv)
     if (argc < 5) {
         fprintf(stderr,
             "usage: %s <rom> <outdir> <tag> <maxframe> [dumpstep] [dumpfrom]\n"
-            "env:   TRACE_FROM=<frame>  trace strip chunks + PPU regs\n",
+            "env:   TRACE_FROM=<frame>  trace strip chunks + PPU regs\n"
+            "       MOUSE=1            attach a scripted SNES Mouse (circling cursor)\n"
+            "       MOUSE_CLICK=<f>    hold left button frames [f,f+10)\n",
             argv[0]);
         return 2;
     }
@@ -226,6 +247,15 @@ int main(int argc, char **argv)
     Settings.APUEnabled        = true;
     Settings.Shutdown          = true;
 
+    const char *me = getenv("MOUSE");
+    mouse_enabled = me && atoi(me);
+    if (mouse_enabled) {
+        const char *e;
+        /* InitROM does MouseMaster = Mouse, so Mouse is the one to set. */
+        Settings.Mouse = true;
+        if ((e = getenv("MOUSE_CLICK"))) mouse_click = (uint32_t)strtoul(e, NULL, 0);
+    }
+
     if (!S9xInitAPU())    { fprintf(stderr, "APU init failed\n");    return 1; }
     if (!S9xInitMemory()) { fprintf(stderr, "Memory init failed\n"); return 1; }
     if (!S9xInitSound(0, 0)) { fprintf(stderr, "Sound init failed\n"); return 1; }
@@ -236,6 +266,10 @@ int main(int argc, char **argv)
     Memory.ROM_Offset    = 0;
     if (!LoadROM(NULL))   { fprintf(stderr, "LoadROM failed\n"); return 1; }
     S9xReset();
+    /* Reset always lands on SNES_JOYPAD; on device host_tick() flips the
+     * live controller when a USB mouse is present — mimic that here. */
+    if (mouse_enabled)
+        IPPU.Controller = SNES_MOUSE;
 
     if (!S9xInitDisplay()) { fprintf(stderr, "Display init failed\n"); return 1; }
     if (!S9xInitGFX())     { fprintf(stderr, "GFX init failed\n");     return 1; }
@@ -246,6 +280,7 @@ int main(int argc, char **argv)
     uint32_t trace_from = tr ? (uint32_t)strtoul(tr, NULL, 0) : UINT32_MAX;
 
     for (uint32_t frame = 0; frame <= maxframe; frame++) {
+        mouse_frame = frame;
         IPPU.RenderThisFrame = true;
         trace_blocks = (frame >= trace_from);
         if (trace_blocks) fprintf(stderr, "frame %u:\n", frame);

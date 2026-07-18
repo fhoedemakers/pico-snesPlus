@@ -556,6 +556,24 @@ static void host_tick(void)
     nespad_read_finish();
 #endif
     tuh_task();
+    /* SNES Mouse auto hot-plug: with a USB mouse present the core's mouse
+     * path takes over SNES port 1 — the port Mario Paint requires — like
+     * plugging the real peripheral in, so pad 1 is suspended until the
+     * mouse is unplugged (pad 2 and the SELECT+START menu combo keep
+     * working). MouseMaster tracks the live connection so without a mouse
+     * the core executes the exact same instruction path as before this
+     * feature. */
+    {
+        io::MouseState &m = io::getCurrentMouseState();
+        Settings.MouseMaster = m.connected;
+        if (m.connected && IPPU.Controller == SNES_JOYPAD)
+        {
+            m.dx = m.dy = m.wheel = 0; /* drop deltas piled up while inactive */
+            IPPU.Controller = SNES_MOUSE;
+        }
+        else if (!m.connected && IPPU.Controller == SNES_MOUSE)
+            IPPU.Controller = SNES_JOYPAD;
+    }
 #if WII_PIN_SDA >= 0 && WII_PIN_SCL >= 0
     wiipad_raw_cached = wiipad_read();
 #endif

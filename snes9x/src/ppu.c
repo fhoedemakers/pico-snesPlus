@@ -1393,7 +1393,15 @@ uint8_t S9xGetCPU(uint16_t Address)
          if (Memory.FillRAM [0x4016] & 1)
             return 0;
 
-         if (PPU.Joypad1ButtonReadPos >= 16) /* Joypad 1 is enabled */
+         /* The SNES Mouse packet is 32 bits, not 16: after the first 16
+          * (latched by the auto-read, which also leaves the shift position
+          * at 16), Nintendo's mouse driver clocks $4016 another 16 times
+          * for the motion byte pair (bits 31..16 — pos^15 keeps walking
+          * them in packet order). Mario Paint reads exactly this way and
+          * treats a mouse whose motion bits stick at 1 as absent. Plain
+          * pads keep the real-hardware behavior of returning 1 once the
+          * 16 button bits are exhausted. */
+         if (PPU.Joypad1ButtonReadPos >= (IPPU.Controller == SNES_MOUSE ? 32 : 16))
             return 1;
 
          return (IPPU.Joypads[0] >> (PPU.Joypad1ButtonReadPos++ ^ 15)) & 1;
@@ -1859,7 +1867,11 @@ void S9xProcessMouse(int32_t which1)
       else
          IPPU.Mouse [which1] |= delta_y << 24;
 
-      IPPU.Joypads [1] = IPPU.Mouse [which1];
+      /* Port 1, not port 2 as upstream had it: Mario Paint's game logic
+       * only accepts the mouse in port 1 (it reads the port-2 packet too,
+       * then ignores it — verified against the real driver's per-frame
+       * $4218 signature check + $4016 motion clocking). */
+      IPPU.Joypads [0] = IPPU.Mouse [which1];
    }
 }
 

@@ -57,6 +57,7 @@ Star Ocean, Street Fighter Alpha 2 (S-DD1) and Far East of Eden Zero (SPC7110) u
 - USB controllers, including Xbox / XInput (and 8BitDo in X-mode), Sony DualShock 4 / DualSense, the AliExpress SNES USB pad, PlayStation Classic, and USB keyboards.
 - Directly wired NES / SNES gamepads, and the Wii Classic / SNES-Classic-mini pad over I²C.
 - Two-player play with a second USB controller.
+- **SNES Mouse**: plug in any USB mouse and it becomes a SNES Mouse in controller port 1 — Mario Paint is fully playable, no configuration needed. While the mouse is connected it takes the place of player 1's pad, just like the real peripheral; unplug it and the pad is player 1 again. See the [README](https://github.com/fhoedemakers/pico-snesPlus#snes-mouse-usb-mouse) for details.
 - A controller test screen in the settings menu shows which button the emulator receives for each press.
 
 **Overclocking**

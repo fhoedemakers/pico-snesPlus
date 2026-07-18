@@ -50,6 +50,18 @@ strip-chunk row range (`fb1` only) and the PPU state per frame (BGMode,
 $2130-$2133, TM/TS, screen height) to stderr — this is how a mid-frame
 split or a screen-mode surprise shows up.
 
+`MOUSE=1` attaches a scripted SNES Mouse (port 1, the port Mario Paint
+requires): the cursor circles the screen center so motion never saturates
+at an edge, and `MOUSE_CLICK=<frame>` holds the left button for 10 frames
+from that frame on. This drives the same core mouse path that
+`port_glue.cpp` feeds from a USB HID mouse on device. Quick check:
+Mario Paint's title cursor follows the circle, and a click timed over a
+title letter triggers its easter-egg animation.
+
+```bash
+MOUSE=1 MOUSE_CLICK=471 ./fb1_nolut mariopaint.sfc out mp 700 50 450
+```
+
 ## Inspecting output
 
 ffmpeg handles PPM everywhere:
