@@ -15,6 +15,9 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes and per-board download links.
 
 ## Status and limitations
 
+> [!IMPORTANT]
+> This version is not perfect. The emulator pushes the RP2350 to its limits: occasional screen artifacts can appear, especially in scrolling levels, and sound is not always flawless. Performance can also vary from game to game. Expect rough edges.
+
 Please read this section before using the emulator. SNES emulation is demanding for this class of hardware; much of the library runs well, but there are real limitations:
 
 - **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, SA-1 and S-RTC games run;  S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.

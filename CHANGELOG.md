@@ -15,6 +15,9 @@ First public release of pico-snesPlus.
 
 First public release. There will be bugs. Please register an issue when you encounter one.
 
+> [!IMPORTANT]
+> This version is not perfect. The emulator pushes the RP2350 to its limits: occasional screen artifacts can appear, especially in scrolling levels, and sound is not always flawless. Performance can also vary from game to game. Expect rough edges.
+
 ## Features
 
 **Cartridge ROMs**
@@ -67,6 +70,7 @@ Star Ocean, Street Fighter Alpha 2 (S-DD1) and Far East of Eden Zero (SPC7110) u
 
 ## Known limitations
 
+- **Occasional screen artifacts and imperfect sound.** Glitches can show up, especially in scrolling levels, and audio is not always flawless. The emulator pushes the RP2350 to its limits, so performance also varies per game.
 - **Frame skipping is on by default** (every other frame; one frame in three for Super FX games). Turn it off in the settings menu to render every frame for smoother motion; many games still hold full speed, but some slow down, so try it per game.
 - Demanding Super FX games such as Star Fox run below full speed.
 - The SETA (ST010 / ST011) and BS-X chips are not implemented and, unlike S-DD1 and SPC7110, are not detected — those games load but misbehave.
