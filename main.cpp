@@ -27,6 +27,7 @@
 #include "pico/bootrom.h"
 #include "hardware/clocks.h"
 #include "hardware/vreg.h"
+#include "hardware/divider.h"
 #include "hardware/watchdog.h"
 #include "tusb.h"
 #include "ff.h"
@@ -551,6 +552,14 @@ static void host_tick(void)
 #if NES_PIN_CLK != -1
     nespad_read_start();
 #endif
+    auto count =
+#if !HSTX
+        dvi_->getFrameCounter();
+#else
+        hstx_getframecounter();
+#endif
+    auto onOff = hw_divider_s32_quotient_inlined(count, 60) & 1;
+    Frens::blinkLed(onOff);
     Frens::pollHeadPhoneJack();
 #if NES_PIN_CLK != -1
     nespad_read_finish();
@@ -1103,10 +1112,10 @@ int main()
     // may cause hardfaults on heavy scenes. 1.7V is the safe limit for 504 Mhz. 
     // BUT CAN CAUSE DAMAGE !!!!!!
     //1.6V is the safe limit for 378 Mhz.
-    vreg_voltage voltage = vreg_voltage::VREG_VOLTAGE_1_60;
+    vreg_voltage voltage = vreg_voltage::VREG_VOLTAGE_1_50;
 #if HW_CONFIG == 2 || HW_CONFIG == 8
     Frens::setOverclockLimits(EMULATOR_CLOCKFREQ_KHZ,  EMULATOR_MAX_CLOCKFREQ_KHZ, 
-                              vreg_voltage::VREG_VOLTAGE_1_60,vreg_voltage::VREG_VOLTAGE_1_70);
+                              voltage,vreg_voltage::VREG_VOLTAGE_1_70);
    
      Frens::FlashParams *flashParams;
     // assign flashParams to point to flash location
