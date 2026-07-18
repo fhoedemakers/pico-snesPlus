@@ -90,13 +90,12 @@ Only the four RP2350 + PSRAM configurations below are supported. For board-by-bo
 |:--|:--|:--|
 | 2 | Breadboard with Pimoroni Pico Plus 2 | [pico_snesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitDVISD_pico2_arm.uf2) |
 | 8 | Adafruit Fruit Jam | [pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2) |
-| 13 | Murmulator M2 | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2) Needs more testing device may bootloop |
+| 13 | Murmulator M2 | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2)  |
 | 14 | Adafruit Feather RP2350 with TLV320DAC3100 | [pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
-
-- **HW_CONFIG 13**: the Murmulator M2 was tested by [DynaMight1124](https://github.com/DynaMight1124). On their device, the emulator started bootlooping after a few minutes of play; the cause is not yet known. Your mileage may vary.
 
 ## Other downloads
 
 - Metadata: [SNESMetadata.zip](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/SNESMetadata.zip)
 
 Extract the zip file to the root folder of the SD card. Select a game in the menu and press START to show more information and box art. Works for most official released games. The screensaver shows floating random cover art.
+
