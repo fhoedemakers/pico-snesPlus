@@ -174,6 +174,23 @@ typedef struct
    uint32_t    vCounter;
    uint32_t    vInstCount;
    uint32_t    vSCBRDirty;               /* if SCBR is written, our cached screen pointers need updating */
+#if SUPERFX_CACHE_SHADOW
+   /* SRAM shadow of the GSU's on-die 512-byte instruction cache. This struct is
+    * a plain global, so the buffer lands in .bss (SRAM) while pvPrgBank points
+    * into cart ROM in PSRAM — which is the whole point: on real hardware the
+    * chip's hot render loops execute out of this cache, but FETCHPIPE went to
+    * PSRAM for every single instruction. Measured on Star Fox's heavy 3D
+    * scenes, 84.6 % of program fetches fall inside the window.
+    *
+    * vCacheLo is the window base *and* the validity flag: it is set to
+    * FX_CACHE_SHADOW_NONE (> 0xffff) whenever the shadow must not be used, so
+    * the fetch fast path is a single unsigned compare with no extra branch on
+    * bCacheActive. pvCacheBank records which program bank the bytes came from,
+    * so a PBR change invalidates rather than silently executing stale code. */
+   uint8_t     avCacheBuffer[512];
+   uint32_t    vCacheLo;
+   uint8_t*    pvCacheBank;
+#endif
 } FxRegs_s;
 
 /* GSU registers */
@@ -249,6 +266,10 @@ typedef struct
  * linear (mask 0xffff). bit 6 of the bank register distinguishes the two. */
 #define FX_BANKMASK(bankreg) (((bankreg) & 0x40) ? 0xffffU : 0x7fffU)
 
+/* Sentinel base meaning "cache shadow invalid": any value above 0xffff works,
+ * since fetch addresses are masked to 16 bits. */
+#define FX_CACHE_SHADOW_NONE 0x10000u
+
 /* Read current ROM-Bank */
 #define ROM(idx) (GSU.pvRomBank[USEX16(idx) & FX_BANKMASK(GSU.vRomBankReg)])
 
@@ -258,8 +279,51 @@ typedef struct
 /* Access data in the current program bank */
 #define PRGBANK(idx) GSU.pvPrgBank[USEX16(idx) & FX_BANKMASK(GSU.vPrgBankReg)]
 
-/* Update pipe from ROM */
-#define FETCHPIPE { PIPE = PRGBANK(R15); }
+#if FX_COUNTERS
+/* Instrumentation for the "shadow the GSU's 512-byte instruction cache in
+ * SRAM" idea: split program fetches into those that land inside the active
+ * cache window and those that do not. On real hardware the in-window ones are
+ * served by the chip's on-die cache; here every fetch goes to PRGBANK, i.e. to
+ * cart ROM in PSRAM. The in-window fraction is therefore the share of fetches
+ * an SRAM shadow could convert from PSRAM to SRAM. Counted here rather than in
+ * FX_STEP because the multi-byte opcodes re-fetch through this macro too. */
+extern uint32_t g_fx_fetch_in;
+extern uint32_t g_fx_fetch_out;
+#define FX_COUNT_FETCH() \
+   do { \
+      uint32_t _fa = USEX16(R15); \
+      if (GSU.bCacheActive && _fa >= GSU.vCacheBaseReg \
+          && _fa < GSU.vCacheBaseReg + 512) \
+         g_fx_fetch_in++; \
+      else \
+         g_fx_fetch_out++; \
+   } while (0)
+/* Fetches actually served from the shadow. Compare against g_fx_fetch_in: a
+ * shortfall means the shadow is being dropped (by the resume revalidation or a
+ * flush) while the window is still nominally active. */
+extern uint32_t g_fx_fetch_shadow;
+#define FX_COUNT_SHADOW(off) do { if ((off) < 512u) g_fx_fetch_shadow++; } while (0)
+#else
+#define FX_COUNT_FETCH() do { } while (0)
+#define FX_COUNT_SHADOW(off) do { } while (0)
+#endif
+
+/* Update pipe from ROM (or from the SRAM cache shadow when R15 is inside the
+ * active window). vCacheLo is FX_CACHE_SHADOW_NONE when the shadow is invalid,
+ * and USEX16 keeps the address <= 0xffff, so the subtraction underflows and the
+ * unsigned compare fails — one subtract + one compare on the hot path, and no
+ * separate bCacheActive test. */
+#if SUPERFX_CACHE_SHADOW
+#define FETCHPIPE \
+   { \
+      uint32_t _fpo = USEX16(R15) - GSU.vCacheLo; \
+      FX_COUNT_FETCH(); \
+      FX_COUNT_SHADOW(_fpo); \
+      PIPE = (_fpo < 512u) ? GSU.avCacheBuffer[_fpo] : PRGBANK(R15); \
+   }
+#else
+#define FETCHPIPE { FX_COUNT_FETCH(); PIPE = PRGBANK(R15); }
+#endif
 
 /* Access source register */
 #define SREG (*GSU.pvSreg)

@@ -32,6 +32,9 @@
 #include "soundux.h"
 #include "display.h"
 #include "port_alloc.h"
+#include "fxemu.h"
+
+extern FxInit_s SuperFX;
 
 /* ---- allocator: both tiers are plain malloc on the host -------------- */
 void *port_alloc_sram(size_t bytes)  { return malloc(bytes); }
@@ -39,7 +42,30 @@ void *port_alloc_psram(size_t bytes) { return malloc(bytes); }
 void  port_alloc_free(void *p)       { free(p); }
 
 /* ---- input / peripheral stubs ---------------------------------------- */
-uint32_t S9xReadJoypad(int32_t port) { (void)port; return 0; }
+/* Scripted joypad on port 1. Without it S9xReadJoypad returns 0 forever and
+ * games that need a button press to leave the title screen (Star Fox) never
+ * reach gameplay, so any in-game measurement would profile the title screen.
+ * PAD_START_AT=<frame> taps Start for 6 frames every 120 frames from that
+ * frame on, PAD_TAPS times (default 3 — enough for Star Fox's title screen
+ * plus route map). Tapping forever instead bounces the game back through its
+ * menus and you never get a long stretch of gameplay to measure.
+ * PAD_HOLD=<mask> holds an arbitrary mask for the whole run. */
+static uint32_t pad_start_at = UINT32_MAX;
+static uint32_t pad_taps = 3;
+static uint32_t pad_hold;
+static uint32_t pad_frame;
+
+uint32_t S9xReadJoypad(int32_t port)
+{
+    if (port != 0) return 0;
+    uint32_t pad = pad_hold;
+    if (pad_frame >= pad_start_at) {
+        uint32_t d = pad_frame - pad_start_at;
+        if (d / 120 < pad_taps && (d % 120) < 6)
+            pad |= SNES_START_MASK;
+    }
+    return pad;
+}
 
 /* Scripted SNES Mouse (env MOUSE=1): circles the cursor around screen
  * center (so deltas keep flowing however long the run) and holds the left
@@ -66,6 +92,33 @@ bool S9xReadSuperScopePosition(int32_t *x, int32_t *y, uint32_t *b)
 bool JustifierOffscreen(void) { return true; }
 void JustifierButtons(uint32_t *b) { (void)b; }
 void S9xToggleSoundChannel(int32_t c) { (void)c; }
+
+/* ---- SuperFX / CPU work counters (FX_COUNTERS builds) ------------------
+ * These answer the question the per-scanline GSU budget hinges on: does
+ * capping GSU throughput reduce total GSU work, or does the game simply take
+ * longer per render and do the same amount? fx_starts is the number of GSU
+ * programs (= 3D frames the game asked for); fx_insns is the work. */
+#if FX_COUNTERS
+extern uint32_t g_fx_insns, g_fx_sessions, g_fx_starts,
+                g_fx_suspends, g_fx_completes, g_fx_kicks, g_cpu_ops;
+/* fetch_in/fetch_out/cache_rebase size up the "shadow the GSU cache in SRAM"
+ * idea: fetch_in is what an SRAM shadow would move off PSRAM, and
+ * 512 * cache_rebase is what an eager fill would cost to put there. */
+extern uint32_t g_fx_fetch_in, g_fx_fetch_out, g_fx_cache_rebase;
+#if SUPERFX_CACHE_SHADOW
+extern uint32_t g_fx_fetch_shadow;
+#endif
+
+static void counters_reset(void)
+{
+    g_fx_insns = g_fx_sessions = g_fx_starts = 0;
+    g_fx_suspends = g_fx_completes = g_fx_kicks = g_cpu_ops = 0;
+    g_fx_fetch_in = g_fx_fetch_out = g_fx_cache_rebase = 0;
+#if SUPERFX_CACHE_SHADOW
+    g_fx_fetch_shadow = 0;
+#endif
+}
+#endif
 
 /* ---- display ---------------------------------------------------------- */
 #define FB_WIDTH  320
@@ -207,7 +260,11 @@ int main(int argc, char **argv)
             "usage: %s <rom> <outdir> <tag> <maxframe> [dumpstep] [dumpfrom]\n"
             "env:   TRACE_FROM=<frame>  trace strip chunks + PPU regs\n"
             "       MOUSE=1            attach a scripted SNES Mouse (circling cursor)\n"
-            "       MOUSE_CLICK=<f>    hold left button frames [f,f+10)\n",
+            "       MOUSE_CLICK=<f>    hold left button frames [f,f+10)\n"
+            "       PAD_START_AT=<f>   tap Start from frame f on (needed to\n"
+            "                          get past a title screen)\n"
+            "       PAD_HOLD=<mask>    hold a button mask for the whole run\n"
+            "       COUNT_WINDOW=<n>   FX_COUNTERS builds: averaging window\n",
             argv[0]);
         return 2;
     }
@@ -247,6 +304,13 @@ int main(int argc, char **argv)
     Settings.APUEnabled        = true;
     Settings.Shutdown          = true;
 
+    {
+        const char *e;
+        if ((e = getenv("PAD_START_AT"))) pad_start_at = (uint32_t)strtoul(e, NULL, 0);
+        if ((e = getenv("PAD_TAPS")))     pad_taps     = (uint32_t)strtoul(e, NULL, 0);
+        if ((e = getenv("PAD_HOLD")))     pad_hold     = (uint32_t)strtoul(e, NULL, 0);
+    }
+
     const char *me = getenv("MOUSE");
     mouse_enabled = me && atoi(me);
     if (mouse_enabled) {
@@ -279,8 +343,21 @@ int main(int argc, char **argv)
     const char *tr = getenv("TRACE_FROM");
     uint32_t trace_from = tr ? (uint32_t)strtoul(tr, NULL, 0) : UINT32_MAX;
 
+#if FX_COUNTERS
+    /* Averaged over a window rather than per frame: GSU work is bursty (a
+     * render spans several frames), so single-frame numbers are noise. */
+    const char *cw = getenv("COUNT_WINDOW");
+    uint32_t count_window = cw ? (uint32_t)strtoul(cw, NULL, 0) : 300;
+    printf("# speedPerLine=%u (SUPERFX_SPEED_PERCENT build-time)\n",
+           (unsigned)SuperFX.speedPerLine);
+    printf("frame,fx_insns,fx_starts,fx_sessions,fx_suspends,fx_completes,"
+           "fx_kicks,cpu_ops,fetch_in,fetch_out,cache_rebase,fetch_shadow\n");
+    counters_reset();
+#endif
+
     for (uint32_t frame = 0; frame <= maxframe; frame++) {
         mouse_frame = frame;
+        pad_frame   = frame;
         IPPU.RenderThisFrame = true;
         trace_blocks = (frame >= trace_from);
         if (trace_blocks) fprintf(stderr, "frame %u:\n", frame);
@@ -295,6 +372,24 @@ int main(int argc, char **argv)
                 PPU.ScreenHeight);
         if (frame >= dumpfrom && (frame - dumpfrom) % dumpstep == 0)
             dump_frame(outdir, tag, frame);
+#if FX_COUNTERS
+        if (frame && (frame % count_window) == 0) {
+            double n = (double)count_window;
+            printf("%u,%.0f,%.3f,%.2f,%.2f,%.3f,%.3f,%.0f,%.0f,%.0f,%.1f,%.0f\n",
+                   frame,
+                   g_fx_insns / n, g_fx_starts / n, g_fx_sessions / n,
+                   g_fx_suspends / n, g_fx_completes / n, g_fx_kicks / n,
+                   g_cpu_ops / n,
+                   g_fx_fetch_in / n, g_fx_fetch_out / n,
+                   g_fx_cache_rebase / n,
+#if SUPERFX_CACHE_SHADOW
+                   g_fx_fetch_shadow / n);
+#else
+                   0.0);
+#endif
+            counters_reset();
+        }
+#endif
     }
     printf("done: %u frames\n", maxframe + 1);
     return 0;

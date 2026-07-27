@@ -21,6 +21,12 @@
 #define __not_in_flash_func(name) name
 #endif
 
+#if FX_COUNTERS
+/* 65816 opcodes retired — tells whether a GSU budget hands its saving straight
+ * back as CPU time spent spinning on the $3030 poll. Host harness only. */
+uint32_t g_cpu_ops;
+#endif
+
 void __not_in_flash_func(S9xMainLoop)()
 {
    do
@@ -69,6 +75,9 @@ void __not_in_flash_func(S9xMainLoop)()
       CPU.PCAtOpcodeStart = CPU.PC;
       CPU.Cycles += CPU.MemSpeed;
       (*ICPU.S9xOpcodes [*CPU.PC++].S9xOpcode)();
+#if FX_COUNTERS
+      g_cpu_ops++;
+#endif
 
       /* SA-1 runs interleaved with the main CPU (up to 3 SA-1 opcodes per
        * main opcode). SA1.Executing is false for non-SA-1 carts, so the

@@ -15,8 +15,38 @@
 
 extern FxInit_s SuperFX;
 
+/* GSU-1 core clock: the SNES master clock / 2. Master is SNES_CLOCK_SPEED * 6
+ * = 21.47727 MHz (snes9x.h), so the GSU-1 runs at 10.738636 MHz. CLSR bit 0
+ * selects double that on a GSU-2; that doubling is applied at the call site in
+ * S9xSuperFXExec, not here. */
+#define GSU_CLOCK_HZ 10738636u
+/* Average GSU instructions retired per 1000 core clocks (~2.4 clocks each,
+ * averaged over cache hits, ROM-fetch stalls and plot). fx_run meters
+ * instructions rather than clocks, so the budget has to be expressed in
+ * instructions; 0.417 is the factor upstream snes9x uses for the same reason. */
+#define GSU_INSN_PER_1000_CLK 417u
+
+/* SUPERFX_SPEED_PERCENT scales the budget: 100 = real GSU-1 throughput,
+ * 0 = no budget at all (run to STOP inside one scanline, which is what this
+ * port did before the budget existed). Set from CMakeLists.txt. */
+#ifndef SUPERFX_SPEED_PERCENT
+#define SUPERFX_SPEED_PERCENT 100
+#endif
+
 void S9xResetSuperFX(void)
 {
+   /* Computed here rather than in S9xInitSuperFX because that runs from
+    * SuperFXROMMap, before Settings.PAL and Memory.ROMFramesPerSecond are
+    * determined — it would pin every PAL cart to NTSC timing. */
+   uint32_t vmax = Settings.PAL ? SNES_MAX_PAL_VCOUNTER : SNES_MAX_NTSC_VCOUNTER;
+   uint32_t fps  = Memory.ROMFramesPerSecond ? Memory.ROMFramesPerSecond
+                                             : (Settings.PAL ? 50 : 60);
+
+   SuperFX.speedPerLine =
+      (uint32_t)(((uint64_t) GSU_CLOCK_HZ * GSU_INSN_PER_1000_CLK) / 1000u
+                 / fps / vmax);
+   SuperFX.speedPerLine = SuperFX.speedPerLine * SUPERFX_SPEED_PERCENT / 100u;
+
    FxReset(&SuperFX);
 }
 

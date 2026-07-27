@@ -402,6 +402,12 @@ static uint32_t prof_us_pace;
  * the share of emulation spent in the GSU. */
 extern "C" uint32_t g_prof_us_sfx;
 extern "C" uint32_t g_prof_sfx_runs;
+/* GSU work counters (FX_COUNTERS, enabled alongside PROFILE_BUCKETS):
+ * instructions retired in fx_run and GSU programs begun. These separate
+ * "the budget removed work" from "the budget only spread the same work
+ * across more scanlines" — sfx= wall-clock cannot tell those apart. */
+extern "C" uint32_t g_fx_insns;
+extern "C" uint32_t g_fx_starts;
 
 /* Phase 0 A/B toggles. Cycles every ~5 s through a 4-state pattern so a
  * single UART capture gives all combinations. When bypass_apu is on we
@@ -1063,7 +1069,8 @@ static void run_emulator(void)
             uint32_t ds = prof_frames_s ? prof_frames_s : 1;
             printf("fps=%lu PAL=%d skip=%d bypAPU=%d bypPACE=%d "
                    "us/frm host=%lu mainR=%lu(x%lu) mainS=%lu(x%lu) "
-                   "blit=%lu pump=%lu pace=%lu sfx=%lu(x%lu)\n",
+                   "blit=%lu pump=%lu pace=%lu sfx=%lu(x%lu) "
+                   "gsuins=%lu gsustart=%lu\n",
                    (unsigned long)delta, (int)Settings.PAL, settings.flags.frameSkip,
                    (int)g_prof_bypass_apu, (int)g_prof_bypass_pace,
                    (unsigned long)(prof_us_host_tick / d),
@@ -1073,11 +1080,18 @@ static void run_emulator(void)
                    (unsigned long)(prof_us_pump / d),
                    (unsigned long)(prof_us_pace / d),
                    (unsigned long)(g_prof_us_sfx / d),
-                   (unsigned long)(g_prof_sfx_runs / d));
+                   (unsigned long)(g_prof_sfx_runs / d),
+                   /* GSU instructions retired and GSU programs begun, both
+                    * per emulated frame. Compare gsuins against the real
+                    * GSU-1 ceiling of 284 x 262 = 74408 to see whether the
+                    * budget is biting (see SUPERFX_SPEED_PERCENT). */
+                   (unsigned long)(g_fx_insns / d),
+                   (unsigned long)(g_fx_starts / d));
             prof_us_host_tick = prof_us_main_r = prof_us_main_s =
                 prof_us_blit = prof_us_pump = prof_us_pace = 0;
             prof_frames_r = prof_frames_s = 0;
             g_prof_us_sfx = g_prof_sfx_runs = 0;
+            g_fx_insns = g_fx_starts = 0;
 #endif
 #if HSTX
 #if EXT_AUDIO_IS_ENABLED

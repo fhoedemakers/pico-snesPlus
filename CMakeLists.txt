@@ -25,7 +25,7 @@ message("* Current build type is : ${CMAKE_BUILD_TYPE}")
 
 # Hardware / board selection. RP2350+PSRAM+HSTX only for this build.
 if(NOT HW_CONFIG)
-    set(HW_CONFIG 2 CACHE STRING "Select the hardware configuration for your board")
+    set(HW_CONFIG 8 CACHE STRING "Select the hardware configuration for your board")
 endif()
 if(NOT USE_HSTX)
     set(USE_HSTX 1 CACHE STRING "Use HSTX for display output")
@@ -226,8 +226,110 @@ target_compile_definitions(${projectname} PRIVATE
 # toggle. Off by default so release builds are unchanged.
 option(PROFILE_BUCKETS "Enable per-frame profiling buckets and A/B toggles" OFF)
 if(PROFILE_BUCKETS)
-    target_compile_definitions(${projectname} PRIVATE PROFILE_BUCKETS=1)
-    message(STATUS "PROFILE_BUCKETS enabled — UART fps line includes us/frame buckets and cycles APU/pace bypass")
+    # FX_COUNTERS rides along: it counts GSU instructions retired and GSU
+    # programs started, which is what tells "less GSU work" apart from "same
+    # work, spread differently" when A/B-ing SUPERFX_SPEED_PERCENT below. The
+    # sfx= wall-clock bucket alone cannot distinguish the two.
+    target_compile_definitions(${projectname} PRIVATE PROFILE_BUCKETS=1 FX_COUNTERS=1)
+    message(STATUS "PROFILE_BUCKETS enabled — UART fps line includes us/frame buckets, GSU work counters and cycles APU/pace bypass")
+endif()
+
+# Per-scanline instruction budget for the SuperFX (GSU), as a percentage of
+# the real GSU-1's throughput (10.74 MHz x ~0.417 instructions/clock => 284
+# instructions per NTSC scanline; doubled when CLSR selects the GSU-2's
+# 21.48 MHz). 0 removes the budget, restoring the run-to-STOP behaviour this
+# port shipped with. See S9xResetSuperFX in snes9x/src/cpu.c.
+#
+# Why this exists: without a budget the GSU finishes a whole render inside one
+# scanline, i.e. in zero emulated time. Star Fox polls the SFR for completion
+# and queues its next 3D frame as soon as it sees "done", so it ends up asking
+# for more GSU work per emulated second than the real console could deliver —
+# the opposite of what you want on a board that is already PSRAM-bound.
+#
+# MEASURED 2026-07-27 on the host harness (tools/host-harness, sfx_capped vs
+# sfx_uncapped, GSU instructions retired per emulated frame):
+#   Star Fox, heavy 3D scenes:  90 644 avg / 127 456 peak  ->  55 733 / 56 988
+#                               (the real GSU-1 ceiling is 284 x 262 = 74 408,
+#                                so uncapped ran the chip ~1.7x overclocked)
+#   Star Fox title screen:      ~43 000  ->  ~43 000  (demand below budget)
+#   Yoshi's Island:             identical to the instruction  (GSU-2, and its
+#                               demand never approaches the budget)
+# Renders stay correct: work is spread across scanlines instead of front-loaded
+# into one, so GSU-drawn content lands a step later, never torn or partial.
+#
+# HARDWARE A/B 2026-07-27, HW_CONFIG 8 (Adafruit Fruit Jam), Star Fox, matched
+# Release builds differing only in this value, judged on the on-screen counter:
+#   SUPERFX_SPEED_PERCENT=0   -> ~23 fps
+#   SUPERFX_SPEED_PERCENT=100 -> ~27-30 fps
+# i.e. +17..30 % emulation speed, which also lifts music tempo by the same
+# factor (tempo tracks emulation speed exactly). That matches the ~4.9 ms/frame
+# predicted from the host instruction counts, so the per-scanline suspend
+# overhead is evidently NOT eating the saving. Hence 100 is the default.
+#
+# The cost, host-measured: ~18 % of the game's own animation rate. Distinct
+# rendered images per 60 emulated frames over Star Fox's intro flyby, 20.1 ->
+# 16.4. 16.4 is the authentic rate, and the speed gain pays for it.
+#
+# Star Fox still runs at only ~half speed, and the budget cannot fix that: with
+# non-GSU emulation alone at ~20 ms/frame (see the profiling notes above), the
+# 16.7 ms needed for 60 fps is out of reach no matter how cheap the GSU gets.
+# The remaining levers are per-GSU-instruction cost (~139 ns, PSRAM-bound: every
+# FETCHPIPE is a PSRAM read and this core has no GSU cache buffer) and the
+# renderer — not the instruction count.
+#
+# Set to 0 for the pre-budget behaviour; that is byte-identical to the old code
+# (verified against a pristine worktree over all 21 local ROMs) and is the
+# one-knob revert if an untestable Super FX title (Stunt Race FX, Doom, Vortex,
+# Winter Gold) turns out to regress.
+#
+# NOTE this is a CACHE variable: changing the default above does NOT reach an
+# already-configured build directory. Pass -DSUPERFX_SPEED_PERCENT=<n> to an
+# existing build dir, or configure a fresh one.
+set(SUPERFX_SPEED_PERCENT 100 CACHE STRING
+    "SuperFX budget as % of real GSU-1 throughput (0 = unlimited, legacy)")
+target_compile_definitions(${projectname} PRIVATE
+    SUPERFX_SPEED_PERCENT=${SUPERFX_SPEED_PERCENT})
+message(STATUS "SUPERFX_SPEED_PERCENT=${SUPERFX_SPEED_PERCENT} (0 = no GSU budget)")
+
+# Shadow the SuperFX chip's on-die 512-byte instruction cache in SRAM.
+#
+# Why: FETCHPIPE reads the GSU program byte through PRGBANK() on EVERY emulated
+# GSU instruction, and that indexes cart ROM — which lives in PSRAM here. This
+# core has no cache buffer at all (bCacheActive/vCacheBaseReg are bookkeeping
+# for fx_checkStartAddress only), so the tight render loops that on real
+# hardware execute entirely out of the chip's cache instead stream from PSRAM,
+# through the same 16 KB XIP cache that also holds the interpreter's own code.
+# Per-GSU-instruction cost, not instruction count, is what limits Star Fox once
+# SUPERFX_SPEED_PERCENT is in play.
+#
+# MEASURED 2026-07-27 on the host harness, Star Fox heavy 3D, per emulated frame:
+#   program fetches inside the cache window : 44 374  (84.6 %)
+#   program fetches outside                :  8 079  (15.4 %)
+#   cache re-bases                         :  12.5  -> 6 386 bytes of refill
+#   => PSRAM program-fetch traffic 52 453 -> 14 465 per frame, a 3.6x cut,
+#      for 512 bytes of SRAM (vs the rejected SUPERFX_IN_SRAM's 52 KB for 15 %).
+# Rendering is byte-identical with the shadow on or off (verified on the host
+# over Star Fox and Yoshi's Island).
+#
+# HARDWARE RESULT 2026-07-27, HW_CONFIG 8, Star Fox, matched Release builds
+# differing only in this option: NO MEASURABLE fps difference. Hence default OFF
+# — a 3.63x PSRAM traffic cut that buys nothing is not worth 512 bytes of SRAM
+# plus four invalidation sites to keep correct. Kept because the code is
+# verified and the measurement is worth not repeating.
+#
+# The useful conclusion is the negative one: GSU *program fetch* is NOT what
+# makes each emulated GSU instruction cost ~139 ns. A small cached render loop
+# evidently already sat in the 16 KB XIP cache, so those reads were mostly hits.
+# The remaining suspects for that cost are the interpreter dispatch itself, the
+# plot path, and ROM *data* reads via R14 — in particular Memory.SRAM, which for
+# a SuperFX cart is the GSU work RAM holding the 3D framebuffer that every plot
+# read-modify-writes, and which is still in PSRAM (memmap.c allocates it with
+# port_alloc_psram and a stale "64 KB cold" comment; it is 128 KB and anything
+# but cold). That is the next lever to try, not this one.
+option(SUPERFX_CACHE_SHADOW "Shadow the GSU's 512-byte instruction cache in SRAM" OFF)
+if(SUPERFX_CACHE_SHADOW)
+    target_compile_definitions(${projectname} PRIVATE SUPERFX_CACHE_SHADOW=1)
+    message(STATUS "SUPERFX_CACHE_SHADOW enabled — GSU instruction fetches served from SRAM (512 B)")
 endif()
 
 # Replace the pico_shared vsync-locked NTSC pacer with a soft time-based

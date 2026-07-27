@@ -56,10 +56,49 @@ Two more chips, SETA (ST010/ST011) and BS-X, are also unimplemented but are not 
 The Super FX chip is emulated correctly, but **whether a game is playable depends on how hard it leans on the chip**:
 
 - **Yoshi's Island (GSU-2) runs decently** and is the good case. It uses the chip mostly for sprite and effect work on top of ordinary PPU rendering.
-- **Star Fox renders correctly but is too slow to play**, landing around 30 fps rather than 60. It draws its entire 3D world through the chip, and the GSU accounts for roughly a third of all emulation time.
+- **Star Fox renders correctly but is still slow**, landing well under 60 fps. It draws its entire 3D world through the chip, and the GSU accounts for roughly a third of all emulation time.
 - Other Super FX games are not tested.
 
 The bottleneck is PSRAM bandwidth, not the CPU clock, so the optional overclock described below does not help these games — Star Fox runs at the same speed at 504 MHz as it did at 378 MHz. Other Super FX titles fall somewhere between these two cases; try them and see.
+
+#### Reading the frame counter on a Super FX game
+
+The on-screen counter shows **emulated SNES frames per second**, so 60 means
+full speed. It is easy to mistake for a game's own animation rate, which is a
+different number: a real SNES always outputs 60 frames a second, but Star Fox's
+*3D scene* only updates 10-20 times a second because the Super FX chip needs
+about four video frames to draw one 3D image. So a counter reading of, say, 24
+does not mean "faster than the real console's 15" — it means the emulator is
+running at 24/60 = 40% of real-time speed, and Star Fox's 3D is updating at
+about 40% of 15, i.e. roughly 6 times a second.
+
+Slowed-down music is the same story rather than a separate fault. The sound
+chip advances on emulated time while the audio output plays at a fixed real
+44.1 kHz, so music tempo tracks emulation speed exactly. **If the music drags,
+the emulator is below full speed; the tempo is a reliable speedometer.**
+
+The chip is given a per-scanline instruction budget matching the real GSU-1's
+throughput, about 284 instructions per scanline. Without it the chip finishes a
+whole render inside a single scanline, in zero emulated time, so Star Fox —
+which polls the chip and queues its next 3D frame as soon as it reads "done" —
+asks for more Super FX work per second than the real console could deliver:
+about 90 000 instructions per frame in heavy 3D scenes, peaking at 127 000,
+against the real chip's ceiling of 74 000. The budget cuts that to about 56 000
+and makes Star Fox behave like the real cartridge.
+
+On an Adafruit Fruit Jam this is worth roughly 17-30% of emulation speed on Star
+Fox (about 23 fps without the budget, 27-30 with it), and music tempo rises by
+the same factor. It is not free: it costs the game about 18% of its own
+animation rate, so each individual 3D image is choppier — that is the authentic
+rate, and here the speed gain pays for it. Games that stay under the budget,
+Yoshi's Island among them, are unaffected. Build with
+`-DSUPERFX_SPEED_PERCENT=0` for the old unbudgeted behaviour.
+
+Even so, Star Fox still runs at only about half speed, and no amount of Super FX
+tuning will fix that: everything *other* than the chip already costs more per
+frame than a 60 fps budget allows. The remaining headroom is in how expensive
+each emulated GSU instruction is, and in the renderer — not in how many
+instructions the chip executes.
 
 ***
 

@@ -15,6 +15,10 @@
  * included here because its ROM()/RAM() macros would collide. */
 #define SFX_FLG_G 0x20
 
+#if FX_COUNTERS
+extern uint32_t g_fx_kicks;
+#endif
+
 /* CPU-side write into the GSU register window 0x3000-0x32ff. Ported from
  * CATSFC S9xSetSuperFX (ppu.c): several registers have side effects, the
  * critical one being 0x301f (R15 high byte) — writing it is what starts
@@ -35,8 +39,17 @@ static void S9xSetSuperFX(uint8_t Byte, uint16_t Address)
       case 0x3030: /* SFR low: GO flag transitions */
          if ((old_fill_ram ^ Byte) & SFX_FLG_G)
          {
+            /* Either arm starts or abandons a program, and with a per-scanline
+             * budget the previous one may still be suspended mid-render — so
+             * clear the pipe/prefix state first (no-op after a normal STOP). */
+            FxAbortSession();
             if (Byte & SFX_FLG_G)
+            {
+#if FX_COUNTERS
+               g_fx_kicks++;
+#endif
                S9xSuperFXExec();
+            }
             else
                FxFlushCache();
          }
@@ -52,7 +65,11 @@ static void S9xSetSuperFX(uint8_t Byte, uint16_t Address)
          fx_updateRamBank(Byte);
          break;
       case 0x301f: /* R15 high byte: kick the GSU */
+         FxAbortSession();
          Memory.FillRAM[0x3030] |= SFX_FLG_G;
+#if FX_COUNTERS
+         g_fx_kicks++;
+#endif
          S9xSuperFXExec();
          break;
       default:

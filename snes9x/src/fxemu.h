@@ -14,6 +14,11 @@ typedef struct
    uint8_t*  pvRam;       /* Pointer to GSU-RAM */
    uint32_t  nRomBanks;   /* Number of 32kb-banks in Cart-ROM */
    uint8_t*  pvRom;       /* Pointer to Cart-ROM */
+   /* Max GSU instructions to execute per scanline, derived from the GSU-1
+    * clock and the video timing in S9xResetSuperFX (cpu.c). 0 means "run to
+    * STOP", the unbudgeted behaviour this port shipped with. Doubled at the
+    * call site when CLSR bit 0 selects the 21.48 MHz GSU-2 clock. */
+   uint32_t  speedPerLine;
 } FxInit_s;
 
 /* Reset the FxChip */
@@ -21,6 +26,10 @@ extern void FxReset(FxInit_s* psFxInfo);
 
 /* Execute until the next stop instruction */
 extern int32_t FxEmulate(uint32_t nInstructions);
+
+/* Put the GSU back in the post-STOP state. Needed on any CPU-initiated
+ * start/abort now that a budget can suspend a render mid-flight. */
+extern void FxAbortSession(void);
 
 /* Write access to the cache */
 extern void FxFlushCache(void); /* Called when the G flag in SFR is set to zero */

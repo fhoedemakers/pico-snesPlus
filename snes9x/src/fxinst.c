@@ -44,15 +44,56 @@ static INLINE void fx_nop(void)
 
 extern void fx_flushCache(void);
 
+#if FX_COUNTERS
+/* Times the cache window is re-based. An SRAM shadow filled eagerly would pay
+ * 512 ROM reads per re-base, so this is the cost side of that trade: it is only
+ * worth doing eagerly if g_fx_fetch_in greatly exceeds 512 * g_fx_cache_rebase.
+ * Note FX_LJMP clears bCacheActive before calling fx_cache, so every ljmp
+ * re-bases — this can be far more frequent than CACHE opcodes alone suggest. */
+uint32_t g_fx_cache_rebase;
+#endif
+
+#if SUPERFX_CACHE_SHADOW
+/* Fill the SRAM shadow with the 512 bytes the GSU cache now covers. Indexing
+ * mirrors PRGBANK() exactly, including the 16-bit wrap and the LoROM fold, so
+ * every byte is what a direct fetch would have returned. Eager rather than
+ * lazy-per-block: measured 12.5 re-bases per frame on Star Fox against 44 374
+ * in-window fetches, so 512 sequential reads per re-base is cheap next to what
+ * it saves, and it keeps the fetch fast path down to one compare.
+ *
+ * NOTE this shadows ROM only. A game that uploads GSU code through the CPU-side
+ * cache window at $3100-$32ff and executes it would run ROM contents instead —
+ * but that was already true before the shadow existed (nothing ever read those
+ * bytes back), so this is a pre-existing gap, not one introduced here. */
+static void fx_fillCacheShadow(void)
+{
+   uint32_t base = GSU.vCacheBaseReg;
+   uint32_t mask = FX_BANKMASK(GSU.vPrgBankReg);
+   uint32_t i;
+
+   for (i = 0; i < 512; i++)
+      GSU.avCacheBuffer[i] = GSU.pvPrgBank[((base + i) & 0xffffU) & mask];
+
+   GSU.pvCacheBank = GSU.pvPrgBank;
+   GSU.vCacheLo    = base; /* arms the fetch fast path */
+}
+#endif
+
 /* 02 - cache - reintialize GSU cache */
 static INLINE void fx_cache(void)
 {
    uint32_t c = R15 & 0xfff0;
    if (GSU.vCacheBaseReg != c || !GSU.bCacheActive)
    {
+#if FX_COUNTERS
+      g_fx_cache_rebase++;
+#endif
       fx_flushCache();
       GSU.vCacheBaseReg = c;
       GSU.bCacheActive = true;
+#if SUPERFX_CACHE_SHADOW
+      fx_fillCacheShadow();
+#endif
    }
    CLRFLAGS;
    R15++;
@@ -3345,12 +3386,27 @@ static INLINE void fx_sm_r15(void)
 
 /*** GSU executions functions ***/
 
+#if FX_COUNTERS
+/* GSU instructions retired. An explicit counter is required: fx_stop() zeroes
+ * GSU.vCounter, so the count cannot be recovered from it afterwards. */
+uint32_t g_fx_insns;
+/* Program fetches inside / outside the active cache window (see FETCHPIPE). */
+uint32_t g_fx_fetch_in;
+uint32_t g_fx_fetch_out;
+uint32_t g_fx_fetch_shadow;
+#endif
+
 uint32_t fx_run(uint32_t nInstructions)
 {
    GSU.vCounter = nInstructions;
    READR14;
    while (TF(G) && (GSU.vCounter-- > 0))
+   {
       FX_STEP;
+#if FX_COUNTERS
+      g_fx_insns++;
+#endif
+   }
    return nInstructions - GSU.vInstCount;
 }
 

@@ -1,6 +1,9 @@
 fb0_lut
 fb0_nolut
 fb1_nolut
+sfx_capped
+sfx_uncapped
 *.ppm
 *.png
 out*/
+sfx_shadow

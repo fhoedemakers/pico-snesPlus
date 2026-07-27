@@ -17,11 +17,20 @@ void FxFlushCache(void)
 {
    GSU.vCacheBaseReg = 0;
    GSU.bCacheActive = false;
+#if SUPERFX_CACHE_SHADOW
+   GSU.vCacheLo = FX_CACHE_SHADOW_NONE;
+#endif
 }
 
 void fx_flushCache(void)
 {
    GSU.bCacheActive = false;
+#if SUPERFX_CACHE_SHADOW
+   /* Disarm the fetch fast path too — it keys off vCacheLo alone, not
+    * bCacheActive, so clearing the flag by itself would leave stale bytes
+    * reachable. */
+   GSU.vCacheLo = FX_CACHE_SHADOW_NONE;
+#endif
 }
 
 void fx_updateRamBank(uint8_t Byte)
@@ -65,6 +74,19 @@ static void fx_readRegisterSpaceForUse(void)
    GSU.pvRamBank = GSU.apvRamBank[GSU.vRamBankReg & 0x3];
    GSU.pvRomBank = GSU.apvRomBank[GSU.vRomBankReg];
    GSU.pvPrgBank = GSU.apvRomBank[GSU.vPrgBankReg];
+
+#if SUPERFX_CACHE_SHADOW
+   /* Revalidate the cache shadow for this session. CBR was just re-read from
+    * the register space and pvPrgBank re-derived from PBR, either of which the
+    * CPU may have changed while the GSU was stopped or suspended. Keeping the
+    * shadow only when both still match what it was filled from is what makes it
+    * survive the ~150-196 per-frame suspend/resume cycles the instruction
+    * budget introduces; anything else drops it and the next cache opcode
+    * refills. */
+   if (!GSU.bCacheActive || GSU.vCacheLo != GSU.vCacheBaseReg
+       || GSU.pvCacheBank != GSU.pvPrgBank)
+      GSU.vCacheLo = FX_CACHE_SHADOW_NONE;
+#endif
 
    /* Set screen pointers */
    GSU.pvScreenBase = &GSU.pvRam[ USEX8(p[GSU_SCBR]) << 10 ];
@@ -197,6 +219,12 @@ void FxReset(FxInit_s* psFxInfo)
    GSU.pvRom = psFxInfo->pvRom;
    GSU.vPrevScreenHeight = ~0;
    GSU.vPrevMode = ~0;
+#if SUPERFX_CACHE_SHADOW
+   /* Must be explicit: the memset above leaves vCacheLo = 0, which is a
+    * perfectly valid window base, so addresses 0-511 would fetch from the
+    * zeroed shadow instead of ROM. */
+   GSU.vCacheLo = FX_CACHE_SHADOW_NONE;
+#endif
 
    /* The GSU can't access more than 2mb (16mbits) = 64 x 32 KB banks. */
    if (GSU.nRomBanks > 0x40)
@@ -277,6 +305,14 @@ int32_t FxEmulate(uint32_t nInstructions)
    /* Check if the start address is valid */
    if (!fx_checkStartAddress())
    {
+      /* CF(G) alone is not enough: vStatusReg has not been loaded from the
+       * register space yet on this call, and fx_writeRegisterSpaceAfterCheck
+       * only writes R15 back. Without the explicit clear below the GO bit
+       * stays set in FillRAM, S9xSuperFXExec's gate passes again next
+       * scanline and the CPU waits forever for GO to drop. Harmless while
+       * the GSU always ran to STOP inside one scanline (this path was
+       * unreachable); reachable once a budget can suspend a render. */
+      GSU.pvRegisters[GSU_SFR] &= (uint8_t) ~FLG_G;
       CF(G);
       fx_writeRegisterSpaceAfterCheck();
       return 0;
@@ -295,6 +331,27 @@ int32_t FxEmulate(uint32_t nInstructions)
 
    /* Check for error code */
    return vCount;
+}
+
+/* Restore the state fx_stop() would have left behind, without touching the
+ * register space. A GSU program is entered "pipe first": FX_STEP executes
+ * GSU.vPipe and only then fetches at R15, so a session that was suspended
+ * mid-render (budget exhausted, G still set) leaves a live opcode byte in the
+ * pipe, a prefix possibly pending in ALT1/ALT2/B, and pvSreg/pvDreg pointing
+ * at some register. If the CPU then starts a *new* program (writes $301f, or
+ * clears and re-sets GO), that leftover byte would execute first through the
+ * leftover dispatch table and every following fetch would be shifted one byte.
+ * A no-op after a natural fx_stop, which already leaves exactly this state. */
+void FxAbortSession(void)
+{
+   GSU.vPipe = 0x01; /* nop */
+   GSU.vPlotOptionReg = 0;
+   GSU.vStatusReg &= ~(FLG_ALT1 | FLG_ALT2 | FLG_B);
+   GSU.pvSreg = GSU.pvDreg = &R0;
+   /* The abort path does not necessarily run fx_writeRegisterSpaceAfterUse,
+    * so mirror the flag clear into the register space by hand. */
+   GSU.pvRegisters[GSU_SFR + 1] &=
+      (uint8_t) ~((FLG_ALT1 | FLG_ALT2 | FLG_B) >> 8);
 }
 
 /* S9x glue: run the GSU for the current scanline when it has been started
@@ -320,6 +377,21 @@ static uint32_t sfx_calls, sfx_runs, sfx_sfr_seen;
 uint32_t g_prof_us_sfx;
 uint32_t g_prof_sfx_runs;
 #endif
+
+#if FX_COUNTERS
+/* Host-harness instrumentation (tools/host-harness/build.sh). g_fx_insns is
+ * incremented in fx_run; the rest tell "how much GSU work" apart from "how
+ * many GSU programs", which is the whole question the budget hinges on.
+ * g_fx_starts counts distinct GSU programs = 3D frames the game asked for. */
+uint32_t g_fx_sessions;   /* scanlines the GSU actually ran on */
+uint32_t g_fx_starts;     /* GSU programs begun (not resumed) */
+uint32_t g_fx_suspends;   /* budget exhausted with G still set */
+uint32_t g_fx_completes;  /* reached STOP */
+uint32_t g_fx_kicks;      /* CPU-initiated starts, counted in ppu.c */
+static bool fx_prev_suspended;
+#endif
+
+extern FxInit_s SuperFX;
 
 void S9xSuperFXExec(void)
 {
@@ -350,10 +422,38 @@ void S9xSuperFXExec(void)
       uint32_t t0 = time_us_32();
 #endif
 
-      if (!Settings.WinterGold || Settings.StarfoxHack)
-         FxEmulate(~0);
+      uint32_t budget;
+
+      if (Settings.WinterGold && !Settings.StarfoxHack)
+      {
+         /* FX SKIING NINTENDO 96 / DIRT RACER: keep the historical CATSFC
+          * numbers. They are the only two titles known to depend on a cap,
+          * and the two this port cannot regression-test locally. */
+         budget = (Memory.FillRAM[0x3000 + GSU_CLSR] & 1) ? 700 : 350;
+      }
       else
-         FxEmulate((Memory.FillRAM[0x3000 + GSU_CLSR] & 1) ? 700 : 350);
+      {
+         budget = SuperFX.speedPerLine;
+         if (Memory.FillRAM[0x3000 + GSU_CLSR] & 1)
+            budget <<= 1; /* CLSR bit 0: 21.48 MHz GSU-2 clock */
+         if (budget == 0)
+            budget = ~0u; /* no budget configured: run to STOP */
+      }
+
+#if FX_COUNTERS
+      g_fx_sessions++;
+      if (!fx_prev_suspended)
+         g_fx_starts++;
+#endif
+
+      FxEmulate(budget);
+
+#if FX_COUNTERS
+      fx_prev_suspended =
+         (Memory.FillRAM[0x3000 + GSU_SFR] & FLG_G) != 0;
+      if (fx_prev_suspended) g_fx_suspends++;
+      else                   g_fx_completes++;
+#endif
 
 #if PROFILE_BUCKETS
       g_prof_us_sfx += time_us_32() - t0;
