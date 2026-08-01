@@ -53,14 +53,18 @@ Two more chips, SETA (ST010/ST011) and BS-X, are also unimplemented but are not 
 
 ### MSU-1
 
-MSU-1 is the homebrew expansion chip behind the CD-quality soundtrack patches (Zelda: A Link to the Past, Aladdin, Chrono Trigger and many others). It is emulated: put the patched ROM, its `.msu` data track and its `-<n>.pcm` audio tracks in the same folder on the SD card and the music plays.
+MSU-1 is the homebrew expansion chip behind the CD-quality soundtrack patches (Zelda: A Link to the Past, Aladdin, Chrono Trigger and many others). It is emulated: put the patched ROM, its `.msu` data track and its `-<n>.pcm` audio tracks together and the music plays.
+
+**Give each MSU-1 game its own subfolder.** A pack carries dozens of `.pcm` tracks, so dropping one in among your other ROMs makes the folder unusable. Subdirectories are supported by the menu, so a folder per game costs nothing:
 
 ```
-/roms/SNES/alttp_msu.sfc
-/roms/SNES/alttp_msu.msu
-/roms/SNES/alttp_msu-1.pcm
-/roms/SNES/alttp_msu-2.pcm   ...
+/roms/SNES/Zelda MSU-1/alttp_msu.sfc
+/roms/SNES/Zelda MSU-1/alttp_msu.msu
+/roms/SNES/Zelda MSU-1/alttp_msu-1.pcm
+/roms/SNES/Zelda MSU-1/alttp_msu-2.pcm   ...
 ```
+
+The three parts must share a base name and sit in the same folder as each other; the folder name itself does not matter.
 
 Things worth knowing:
 
@@ -117,7 +121,7 @@ For wiring and assembly instructions, see the setup sections of the [pico-infone
 
 1. Format a microSD card as FAT32 (recommended) or exFAT.
 2. Copy SNES ROM files you legally own onto the card, preferably into `/roms/SNES`. Subdirectories are supported. ROMs must have the `.smc` or `.sfc` extension.
-   - For an MSU-1 soundtrack patch, put the `.msu` and `-<n>.pcm` files alongside the ROM, sharing its base name. See [MSU-1](#msu-1).
+   - For an MSU-1 soundtrack patch, give the game its own subfolder and put the `.msu` and `-<n>.pcm` files in it alongside the ROM, sharing its base name. See [MSU-1](#msu-1).
 3. Insert the card into the SD card slot and power on the device.
 4. Select a game in the on-screen menu to start it.
 
