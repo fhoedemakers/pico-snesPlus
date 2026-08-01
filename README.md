@@ -20,7 +20,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes and per-board download links.
 
 Please read this section before using the emulator. SNES emulation is demanding for this class of hardware; much of the library runs well, but there are real limitations:
 
-- **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, SA-1 and S-RTC games run;  S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.
+- **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, SA-1, S-RTC and MSU-1 games run;  S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.
 - **Games generally run at full speed (60 fps).** Demanding Super FX titles are the main exception; see [Expansion chips](#expansion-chips).
 - **Frame skipping is still enabled by default.** Most games render every other frame; demanding Super FX titles render one frame in three. Turning it off in the settings menu renders every frame, which looks considerably smoother; many games still hold full speed, but some slow down — try it per game, and leave it on for the heaviest titles.
 - **Battery saves are persisted** In-game saves that a cartridge writes to its battery-backed SRAM are stored on the SD card under `/SAVES/SNES/`. The save is written when you quit the game to the ROM menu (Select + Start → Quit game), so **quit to the menu before powering off** to keep your progress — pulling power mid-game loses everything since the last quit. There is no separate save-state feature. Games that use password systems are unaffected.
@@ -50,6 +50,25 @@ These are **not** emulated. Such ROMs are detected at load time and refused with
 | SPC7110 | Far East of Eden Zero, Momotarou Dentetsu Happy |
 
 Two more chips, SETA (ST010/ST011) and BS-X, are also unimplemented but are not detected, so those carts load and then run without the chip rather than being refused. Expect them to misbehave.
+
+### MSU-1
+
+MSU-1 is the homebrew expansion chip behind the CD-quality soundtrack patches (Zelda: A Link to the Past, Aladdin, Chrono Trigger and many others). It is emulated: put the patched ROM, its `.msu` data track and its `-<n>.pcm` audio tracks in the same folder on the SD card and the music plays.
+
+```
+/roms/SNES/alttp_msu.sfc
+/roms/SNES/alttp_msu.msu
+/roms/SNES/alttp_msu-1.pcm
+/roms/SNES/alttp_msu-2.pcm   ...
+```
+
+Things worth knowing:
+
+- **The `.pcm` tracks are streamed from the SD card while the game runs** — a playing track needs a steady 176 KB/s, measured at roughly 14% of one CPU core on the Fruit Jam. This is the one part of the emulator that reads the card during gameplay, so a slow or worn card can cost frame rate or make the music stutter. A decent card is the fix. If the card cannot keep up, an `MSU1:` line appears on the serial console reporting the read cost and the underrun count; it stays quiet otherwise. Build with `-DMSU1_VERBOSE=ON` to get that line every second regardless, which is the way to measure what a particular card can do.
+- **Packs with video (the "Deluxe" ones) are much heavier.** Zelda's intro FMV streams its video through the data track as well as the music — around 830 KB/s in total, which is more than half of what the SD card can deliver, and it drops that sequence to about 40 fps. The music itself stays clean; ordinary music-only packs cost only the 176 KB/s above.
+- **Nothing is allocated and no card access happens unless a pack is present.** ROMs without one behave exactly as before.
+- MSU-1 packs are large (often several GB), so plan card space accordingly.
+- MSU-1 can be compiled out entirely with `-DENABLE_MSU1=OFF`.
 
 ### A note on Super FX speed
 
@@ -98,6 +117,7 @@ For wiring and assembly instructions, see the setup sections of the [pico-infone
 
 1. Format a microSD card as FAT32 (recommended) or exFAT.
 2. Copy SNES ROM files you legally own onto the card, preferably into `/roms/SNES`. Subdirectories are supported. ROMs must have the `.smc` or `.sfc` extension.
+   - For an MSU-1 soundtrack patch, put the `.msu` and `-<n>.pcm` files alongside the ROM, sharing its base name. See [MSU-1](#msu-1).
 3. Insert the card into the SD card slot and power on the device.
 4. Select a game in the on-screen menu to start it.
 
@@ -196,7 +216,7 @@ Run `./bld.sh -h` for all options. The resulting `.uf2` file is placed in the `r
 
 ### Host-side render test harness
 
-The bundled snes9x core also compiles natively on Linux. [tools/host-harness](tools/host-harness) wraps it in a small test harness that boots a ROM through the same initialization sequence the RP2350 firmware uses and dumps rendered frames as PPM images — rendering bugs can be reproduced and bisected on a desktop machine without flashing a board. Three build variants (strip renderer vs. classic full-frame, device vs. upstream color math) let a byte-compare of the output pinpoint which layer a bug lives in. See [tools/host-harness/README.md](tools/host-harness/README.md) for usage.
+The bundled snes9x core also compiles natively on Linux. [tools/host-harness](tools/host-harness) wraps it in a small test harness that boots a ROM through the same initialization sequence the RP2350 firmware uses and dumps rendered frames as PPM images — rendering bugs can be reproduced and bisected on a desktop machine without flashing a board. Three build variants (strip renderer vs. classic full-frame, device vs. upstream color math) let a byte-compare of the output pinpoint which layer a bug lives in. A fourth variant adds MSU-1 with a stdio backend, so a soundtrack pack can be played and the mixed audio dumped to a file without a board. See [tools/host-harness/README.md](tools/host-harness/README.md) for usage.
 
 ***
 

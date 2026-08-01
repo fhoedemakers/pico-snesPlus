@@ -7,6 +7,9 @@
 #include "dma.h"
 #include "apu.h"
 #include "sa1.h"
+#if ENABLE_MSU1
+#include "msu1.h"
+#endif
 
 /*modified per anomie Mode 5 findings */
 static const int32_t HDMA_ModeByteCounts [8] =
@@ -173,6 +176,15 @@ void S9xDoDMA(uint8_t Channel)
    {
       uint8_t* base;
       uint16_t p;
+#if ENABLE_MSU1
+      /* File-scope rather than a local: as a local its live range spans the
+       * whole transfer block and costs a callee-saved register there, which
+       * measurably grows this .time_critical (SRAM-resident) object.
+       * S9xDoDMA cannot nest — CPU.InDMA guards it — so a single slot is
+       * safe. */
+      static uint8_t* msu_stage;
+      msu_stage = NULL;
+#endif
       /* XXX: DMA is potentially broken here for cases where we DMA across
        * XXX: memmap boundries. A possible solution would be to re-call
        * XXX: GetBasePointer whenever we cross a boundry, and when
@@ -200,10 +212,37 @@ void S9xDoDMA(uint8_t Channel)
          p = 0;
       }
 
+#if ENABLE_MSU1
+      /* MSU-1 data-port DMA. Games pull the data track with a fixed-address
+       * A-bus DMA from $2001, but GetBasePointer maps MAP_PPU to
+       * Memory.FillRAM, so the loops below would read the same stale FillRAM
+       * byte `count` times. msu1_dma_stage drains the port into a transient
+       * PSRAM buffer (returning NULL for every non-MSU transfer) and the
+       * normal loops then walk that instead — the same shape the SA-1
+       * char-DMA path above uses with SA1CharDMABuffer. The address decode
+       * is inside msu1.c, which stays in flash; all this hot object pays is
+       * one .bss test that is false whenever no pack is loaded. */
+      if (g_msu1_active)
+         msu_stage = msu1_dma_stage(d->ABank, d->AAddress, (uint32_t) count,
+                                    in_sa1_dma);
+#endif
+
       if (inc > 0)
          d->AAddress += count;
       else if (inc < 0)
          d->AAddress -= count;
+
+#if ENABLE_MSU1
+      /* Applied after the A-bus bookkeeping above: MSU-1 transfers are
+       * fixed-address (inc == 0) and must stay that way, but the staged copy
+       * has to be walked linearly. */
+      if (msu_stage)
+      {
+         base = msu_stage;
+         p    = 0;
+         inc  = 1;
+      }
+#endif
 
       if (d->TransferMode == 0 || d->TransferMode == 2 || d->TransferMode == 6)
       {
@@ -407,6 +446,7 @@ void S9xDoDMA(uint8_t Channel)
             count -= 4;
          } while (count > 0);
       }
+      /* msu_stage is owned and retained by msu1.c — nothing to free here. */
    }
    else
    {

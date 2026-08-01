@@ -16,6 +16,7 @@ target_sources(snes9x_core INTERFACE
     src/gfx.c
     src/globals.c
     src/memmap.c
+    src/msu1.c
     src/obc1.c
     src/ppu.c
     src/sa1.c
