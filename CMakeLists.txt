@@ -97,6 +97,32 @@ elseif(RENDER_TO_FB)
     message(STATUS "RENDER_TO_FB ignored — requires an HSTX board configuration")
 endif()
 
+# MSU-1: the homebrew SNES expansion chip ($2000-$2007) that plays 44.1 kHz
+# stereo PCM tracks from files sitting next to the ROM (<rom>-<n>.pcm) plus a
+# byte-addressed data track (<rom>.msu). Its PCM format is exactly this port's
+# native audio format, so there is no resampling — but a playing track costs
+# 176.4 KB/s of sustained SD reads (2949 B per frame, blocking, on core0) and
+# ~70 KB of PSRAM for the ring + data window. Nothing is allocated and no SD
+# access happens unless a pack is actually found for the loaded ROM, so plain
+# ROMs pay only one predictable not-taken branch in S9xSetPPU.
+# Watch the once-per-second "MSU1:" line for the SD cost on your card.
+# Directory-scoped so it reaches the snes9x_core build (msu1.c, ppu.c, dma.c).
+option(ENABLE_MSU1 "MSU-1 audio: stream <rom>-<n>.pcm / <rom>.msu from SD" ON)
+if(ENABLE_MSU1)
+    add_definitions(-DENABLE_MSU1=1)
+    message(STATUS "ENABLE_MSU1=1 — MSU-1 audio streaming (PSRAM ring, SD-backed)")
+endif()
+
+# The MSU1: health line is otherwise printed only when the card is
+# struggling (underruns, a slow read, or a draining ring), matching the
+# audio-health readout in run_emulator(). Turn this on to get it every
+# second while a track plays — the way to characterise a new SD card.
+option(MSU1_VERBOSE "Print the MSU-1 SD/ring health line every second" OFF)
+if(MSU1_VERBOSE AND ENABLE_MSU1)
+    add_definitions(-DMSU1_VERBOSE=1)
+    message(STATUS "MSU1_VERBOSE=1 — per-second MSU-1 telemetry on the console")
+endif()
+
 # TinyUSB family support + Pico SDK init (same dance as pico-infonesPlus).
 set(FAMILY rp2040)
 include($ENV{PICO_SDK_PATH}/lib/tinyusb/hw/bsp/family_support.cmake)
@@ -120,6 +146,7 @@ endif()
 
 add_executable(${projectname}
     main.cpp
+    msu1_port.cpp
     splash.cpp
     DefaultSS555.c
 )

@@ -60,6 +60,13 @@ extern "C" {
 #include "display.h"
 }
 
+#if ENABLE_MSU1
+/* MSU-1 expansion audio. Registers live in the snes9x core (ppu.c/dma.c);
+ * the streaming half is split between core0 (msu1_pump — all SD I/O) and
+ * core1 (msu1_mix — sums PCM into the DSP mix). See snes9x/src/msu1.h. */
+#include "msu1.h"
+#endif
+
 #if RENDER_TO_FB
 /* port glue — strip renderer. Re-anchors the framebuffer window for the
  * current PPU.ScreenHeight (the overscan bit flips 224<->239 at runtime)
@@ -332,6 +339,16 @@ static void __not_in_flash_func(core1_mix_task)(void)
         port_sound_lock();
         S9xMixSamples(mix_buf_c1, n * 2);
         port_sound_unlock();
+#if ENABLE_MSU1
+        /* MSU-1 PCM sums on top of the SNES DSP mix — before the VU meter so
+         * the meter shows what actually leaves the box, and before both sink
+         * loops so one call covers HDMI and I2S. Deliberately outside the
+         * sound lock: it shares nothing with the SPC700/DSP, only the PSRAM
+         * ring that core0 fills in msu1_pump. S9xMixSamples has already
+         * clipped its output to full scale, so the sum really can overflow —
+         * msu1_mix saturates. */
+        msu1_mix(mix_buf_c1, n);
+#endif
 #if ENABLE_VU_METER
         if (vu_on) {
             for (int i = 0; i < n; i++) {
@@ -461,6 +478,9 @@ static void __not_in_flash_func(pump_audio)(void)
 
     /* S9xMixSamples expects "count" = stereo*2 (number of int16 slots). */
     S9xMixSamples(mix_buf, free_slots * 2);
+#if ENABLE_MSU1
+    msu1_mix(mix_buf, free_slots);   /* see the core1 mixer for the rationale */
+#endif
 #if ENABLE_VU_METER
     if (vu_on) {
         for (int i = 0; i < free_slots; i++) {
@@ -875,6 +895,12 @@ static void run_emulator(void)
              * menu actions may touch sound state — park the mixer. */
             mix_c1_park();
 #endif
+#if ENABLE_MSU1
+            /* Strictly after the core1 mixer has parked and acked, so core1
+             * is provably outside msu1_mix; and before the menu (which reads
+             * and writes settings) takes the SD card. */
+            msu1_park();
+#endif
             int r = showSettingsMenu(true);
             if (r == 3) {
 #if 0
@@ -902,10 +928,19 @@ static void run_emulator(void)
                  * S9xReset reinitializes the APU/DSP state core1 mixes
                  * from. playback_rate is untouched, so audio survives. */
                 S9xReset();
+#if ENABLE_MSU1
+                /* The cart is back at its reset vector; silence any track it
+                 * had going so the old music does not survive into the boot
+                 * screen. Files and buffers stay allocated. */
+                msu1_reset();
+#endif
             }
             /* Repaint border in case the menu touched the framebuffer. */
 #if HSTX
             memset(fb, 0, 320 * 240 * sizeof(uint16_t));
+#endif
+#if ENABLE_MSU1
+            msu1_resume();          /* mirror of the park order above */
 #endif
 #if HSTX && MIX_ON_CORE1
             mix_c1_resume();
@@ -997,6 +1032,14 @@ static void run_emulator(void)
             skipFrames--;
         }
 
+#if ENABLE_MSU1
+        /* Every MSU-1 SD access happens here — the deferred track open and
+         * the ring refill (~2949 B/frame while a track plays). Placed at the
+         * end of the frame's work so the blocking f_read is absorbed by the
+         * pacing slack that paceFrame() is about to sleep away, and inside
+         * the PROFILE_BUCKETS "pump" bucket so its cost is measurable. */
+        msu1_pump();
+#endif
 #if !(HSTX && MIX_ON_CORE1)
         pump_audio();
 #endif
@@ -1096,6 +1139,13 @@ static void run_emulator(void)
                 audio_underruns_last = ur;
                 audio_min_level = UINT32_MAX;
             }
+#endif
+#if ENABLE_MSU1
+            /* Silent unless the card is struggling — same "only chatter when
+             * abnormal" rule as the audio-health block above. Build with
+             * -DMSU1_VERBOSE=ON for a line every second while a track plays,
+             * which is how to characterise a new SD card. */
+            msu1_stats_report();
 #endif
             fps_t0_us = now;
             fps_f0 = frame;
@@ -1250,10 +1300,21 @@ int main()
          * S9xReset does not clear Memory.SRAM, so the loaded save survives. */
         snes_load_sram();
 
+#if ENABLE_MSU1
+        /* Detect <rom>.msu / <rom>-1.pcm next to the ROM. No pack means no
+         * allocation, no SD traffic and no behaviour change at all. */
+        msu1_init();
+        Frens::dumpHeapStats("after-MSU1");
+#endif
+
         run_emulator();
 
         /* Flush battery SRAM back to SD before S9xDeinitMemory frees it. */
         snes_save_sram();
+
+#if ENABLE_MSU1
+        msu1_deinit();   /* closes the .msu/.pcm handles, frees the PSRAM */
+#endif
 
         /* Return to menu: tear down all snes9x state so the menu has room. */
         S9xDeinitGFX();

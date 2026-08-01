@@ -1,6 +1,8 @@
 fb0_lut
 fb0_nolut
 fb1_nolut
+msu1
+*.raw
 *.ppm
 *.png
 out*/

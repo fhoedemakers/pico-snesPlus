@@ -1,6 +1,6 @@
 # CHANGELOG
 
-First public release of pico-snesPlus.
+Release notes for pico-snesPlus. Newest release first.
 
 # General Info
 
@@ -10,6 +10,45 @@ First public release of pico-snesPlus.
 
 > [!IMPORTANT]
 > An **RP2350** board with **8 MB PSRAM** is required. The original RP2040 (Pico 1), and RP2350 boards without PSRAM, are not supported.
+
+# v0.2
+
+Everything listed under [v0.1](#v01) still applies — the features and the known limitations. This release adds MSU-1 soundtrack support and can be started from the pico-bootLoader boot menu.
+
+## MSU-1 soundtracks
+
+MSU-1 is the homebrew expansion chip used by the CD-quality soundtrack patches that exist for many games — Zelda: A Link to the Past, Chrono Trigger, Aladdin and others. Those patches now play their music.
+
+Give each MSU-1 game its own subfolder on the SD card, and put the patched ROM, its `.msu` file and its `-<n>.pcm` tracks in it, all sharing the same base name. A pack carries dozens of tracks, so keeping it in a folder of its own is the difference between a tidy card and an unusable one:
+
+```
+/roms/SNES/Zelda MSU-1/alttp_msu.sfc
+/roms/SNES/Zelda MSU-1/alttp_msu.msu
+/roms/SNES/Zelda MSU-1/alttp_msu-1.pcm
+/roms/SNES/Zelda MSU-1/alttp_msu-2.pcm   ...
+```
+
+Nothing else needs to be configured — the emulator picks the pack up when it loads the ROM.
+
+Worth knowing:
+
+- **The music is streamed from the SD card while you play.** It is the only thing that reads the card during a game, so a slow or worn card can cost frame rate or make the music stutter. A decent card is the fix.
+- **Packs with video (the "Deluxe" ones) are heavier.** Zelda's intro movie streams its video through the card as well, which drops that sequence to about 40 fps. The music itself stays clean, and ordinary music-only packs are far cheaper.
+- **ROMs without a pack are unaffected** — nothing extra is loaded and the card is not touched.
+- MSU-1 packs are large, often several GB, so plan card space accordingly.
+
+See the [MSU-1 section in the README](https://github.com/fhoedemakers/pico-snesPlus#msu-1) for the details.
+
+## Starting from the bootloader
+
+pico-snesPlus can now be launched from [pico-bootLoader](https://github.com/fhoedemakers/pico-bootLoader), a boot menu for RP2350 boards that keeps several emulators (and a Doom port) on one SD card. At power-on you pick one from an on-screen menu; the bootloader flashes it and starts it, and a reset or power cycle always returns to the menu — no reconnecting the board to a PC to switch systems. From inside the emulator, Select + Start → *Return to emulator selection* goes back.
+
+The bootloader ships its own copy of this emulator in the SD-card archive on its releases page, so nothing here needs to be downloaded for that. If you do not use the bootloader, nothing changes: flash the `.uf2` for your board as before.
+
+## Other changes
+
+- The PCB design files moved to the shared `pico_shared` repository. The downloads below are unchanged.
+- MSU-1 support was developed with the help of [Anthropic Claude](https://www.anthropic.com/claude), like the rest of the port.
 
 # v0.1
 

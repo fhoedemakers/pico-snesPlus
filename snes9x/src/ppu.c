@@ -10,6 +10,9 @@
 #include "srtc.h"
 #include "fxemu.h"
 #include "sa1.h"
+#if ENABLE_MSU1
+#include "msu1.h"
+#endif
 
 /* GSU (SuperFX) SFR GO flag — mirrors FLG_G in fxinst.h, which isn't
  * included here because its ROM()/RAM() macros would collide. */
@@ -154,6 +157,23 @@ void S9xSetPPU(uint8_t Byte, uint16_t Address)
 {
    if (Address <= 0x2183)
    {
+#if ENABLE_MSU1
+      /* MSU-1 lives at $2000-$2007. Handled before the switch rather than as
+       * extra case labels: cases at $2000 would stretch the compiler's jump
+       * table down from $2100, adding ~1 KB to ppu.c — one of the
+       * .time_critical files, and the SRAM heap runs ~1 KB free. Everything
+       * below $2100 already falls through to the FillRAM store at the tail
+       * of this function, so this is that store plus one predictable,
+       * not-taken compare on the PPU write path. */
+      if (Address < 0x2100)
+      {
+         if (g_msu1_active && (Address & 0xfff8) == 0x2000)
+            msu1_write_port(Address, Byte);
+         else
+            Memory.FillRAM[Address] = Byte;
+         return;
+      }
+#endif
       switch (Address)
       {
       case 0x2100: /* Brightness and screen blank bit */
@@ -689,7 +709,15 @@ uint8_t S9xGetPPU(uint16_t Address)
 {
    uint8_t byte;
    if (Address < 0x2100) /* not a real PPU reg */
+   {
+#if ENABLE_MSU1
+      /* MSU-1 lives at $2000-$2007. Free to test here: this branch is only
+       * reached for addresses the SNES itself leaves unmapped. */
+      if (g_msu1_active && (Address & 0xfff8) == 0x2000)
+         return msu1_read_port(Address);
+#endif
       return OpenBus; /* treat as unmapped memory returning last byte on the bus */
+   }
    if (Address <= 0x2190)
    {
       switch (Address)
