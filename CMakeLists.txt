@@ -25,7 +25,7 @@ message("* Current build type is : ${CMAKE_BUILD_TYPE}")
 
 # Hardware / board selection. RP2350+PSRAM+HSTX only for this build.
 if(NOT HW_CONFIG)
-    set(HW_CONFIG 2 CACHE STRING "Select the hardware configuration for your board")
+    set(HW_CONFIG 8 CACHE STRING "Select the hardware configuration for your board")
 endif()
 if(NOT USE_HSTX)
     set(USE_HSTX 1 CACHE STRING "Use HSTX for display output")
@@ -222,6 +222,18 @@ target_compile_definitions(${projectname} PRIVATE
 )
 
 # -----------------------------------------------------------------------
+# Render menu text at 80 columns instead of 40. Needs a 640-pixel-wide source
+# row, so it is HSTX-only (the PicoDVI TMDS encoders consume w/2 input pixels).
+# Reinterprets the existing 320x240x16bpp framebuffer as 640x240x8bpp palette
+# indices while a text screen is up, so the extra cost is ~512 B of .bss plus
+# 3600 B of PSRAM for the wider character grid. Additionally gated at runtime on
+# PSRAM being present — see MENU80COLS_REQUIRE_PSRAM in pico_shared/menu.h.
+option(USE80COLS "Render menu text at 80 columns (RP2350 + HSTX only)" OFF)
+if(USE80COLS)
+    target_compile_definitions(${projectname} PRIVATE USE80COLS=1)
+    message(STATUS "USE80COLS enabled — 80-column menu text on RP2350 HSTX builds with PSRAM")
+endif()
+
 # Phase 0 profiling: enable per-frame time buckets and a 4-state A/B
 # toggle. Off by default so release builds are unchanged.
 option(PROFILE_BUCKETS "Enable per-frame profiling buckets and A/B toggles" OFF)
