@@ -419,6 +419,17 @@ if(SUPERFX_IN_SRAM)
     message(STATUS "SUPERFX_IN_SRAM=1 — GSU interpreter moved to SRAM (~52 KB)")
 endif()
 
+# Host object-file suffix: ".o" on Unix hosts, ".obj" on Windows ones (MinGW
+# Makefiles / Ninja under MSYS2). CMake picks this per language in
+# CMakeCInformation.cmake, so use its variable instead of hard-coding ".o" —
+# every file below is C. (The cross toolchain is arm-none-eabi either way; only
+# the name CMake gives the object file changes.)
+if(CMAKE_C_OUTPUT_EXTENSION)
+    set(_objext "${CMAKE_C_OUTPUT_EXTENSION}")
+else()
+    set(_objext ".o")
+endif()
+
 foreach(_src IN LISTS SNES9X_SRAM_HOT_FILES)
     get_filename_component(_stem "${_src}" NAME_WE)
     set_source_files_properties(snes9x/src/${_src} PROPERTIES
@@ -427,7 +438,7 @@ foreach(_src IN LISTS SNES9X_SRAM_HOT_FILES)
         COMMAND ${CMAKE_OBJCOPY}
                 --rename-section .text=.time_critical_${_stem}
                 --rename-section .rodata=.time_critical_rodata_${_stem}
-                "${CMAKE_BINARY_DIR}/CMakeFiles/${projectname}.dir/snes9x/src/${_src}.o"
+                "${CMAKE_BINARY_DIR}/CMakeFiles/${projectname}.dir/snes9x/src/${_src}${_objext}"
         COMMENT "Moving snes9x ${_src} .text+.rodata to .time_critical (SRAM)"
         VERBATIM)
 endforeach()
