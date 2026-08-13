@@ -9,16 +9,25 @@ It is a sister project of these emulators, with which it shares its menu, displa
 - Game Boy / Game Boy Color: [pico-peanutGB](https://github.com/fhoedemakers/pico-peanutGB)
 - Sega Mega Drive / Genesis: [pico-genesisPlus](https://github.com/fhoedemakers/pico-genesisPlus)
 
+It runs on four hardware configurations, each with its own ready-made binary — see [Supported hardware](#supported-hardware) for the download links:
+
+- [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) — the primary development and test board
+- [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107) with an [Adafruit DVI breakout](https://www.adafruit.com/product/4984) and a microSD breakout, on a breadboard or on the [PicoNES PCB](#picones-pcb)
+- [Murmulator M2](https://murmulator.ru)
+- [Adafruit Feather RP2350 with HSTX Port](https://www.adafruit.com/product/6130) with a TLV320DAC3100 I2S DAC and a microSD breakout
+
+All four are RP2350 boards with 8 MB of PSRAM, which this emulator requires: a plain Raspberry Pi Pico 2 has none and cannot be used, and configurations without PSRAM known from the sister projects will not build.
+
 See [CHANGELOG.md](CHANGELOG.md) for release notes and per-board download links.
 
 ***
 
 ## Status and limitations
 
-> [!IMPORTANT]
-> This version is not perfect. The emulator pushes the RP2350 to its limits: occasional screen artifacts can appear, especially in scrolling levels, and sound is not always flawless. Performance can also vary from game to game. Expect rough edges.
+> [!NOTE]
+> Squeezing a SNES into a microcontroller asks a lot of the RP2350, and most of the library plays back nicely: full speed, with sound. It is not a perfect emulator, though — now and then a graphical artifact shows up in a scrolling level or the audio hiccups, and how well a game runs varies from title to title. 
 
-Please read this section before using the emulator. SNES emulation is demanding for this class of hardware; much of the library runs well, but there are real limitations:
+Worth knowing before you start. SNES emulation is demanding for this class of hardware, so there are some real limitations:
 
 - **Most cartridge expansion chips are emulated, but not all.** DSP-1 to DSP-4, Super FX, C4, OBC1, SA-1, S-RTC and MSU-1 games run;  S-DD1, and SPC7110 games are refused at load time with a message. Super FX speed varies a lot per game. See [Expansion chips](#expansion-chips) for the full picture.
 - **Games generally run at full speed (60 fps).** Demanding Super FX titles are the main exception; see [Expansion chips](#expansion-chips).
@@ -90,7 +99,7 @@ The bottleneck is PSRAM bandwidth, not the CPU clock, so the optional overclock 
 
 By default the RP2350 is overclocked to 378 MHz for this emulator. This clock gives stable performance across the tested games.
 
-On HW_CONFIG 2 (Pimoroni Pico Plus 2 breadboard) and HW_CONFIG 8 (Adafruit Fruit Jam), the settings menu has an optional overclock that raises the clock to 504 MHz; it is not offered on the Murmulator M2 (13) or the Feather RP2350 (14). **Enabling it can lead to instabilities and crashes**, and the performance gain is minimal: the real bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed at 504 MHz as they do at 378 MHz. Only enable it if you want to experiment, and expect reduced stability.
+On HW_CONFIG 2 (Pimoroni Pico Plus 2 breadboard or PicoNES PCB) and HW_CONFIG 8 (Adafruit Fruit Jam), the settings menu has an optional overclock that raises the clock to 504 MHz; it is not offered on the Murmulator M2 (13) or the Feather RP2350 (14). **Enabling it can lead to instabilities and crashes**, and the performance gain is minimal: the real bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed at 504 MHz as they do at 378 MHz. Only enable it if you want to experiment, and expect reduced stability.
 
 Use this software at your own risk. I am not responsible in any way for damage to your board and/or connected peripherals caused by using this software, nor for damage caused by incorrect wiring or voltages.
 
@@ -102,18 +111,82 @@ An RP2350 board with 8 MB of PSRAM is required. Only the four hardware configura
 
 | HW_CONFIG | Hardware | Binary |
 | --- | --- | --- |
-| 2 | Breadboard with [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107), [Adafruit DVI Breakout](https://www.adafruit.com/product/4984), and [Adafruit Micro-SD breakout](https://www.adafruit.com/product/254) | [pico_snesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitDVISD_pico2_arm.uf2) |
-| 8 | [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) (primary development and test board) | [pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2) |
-| 13 | [Murmulator M2](https://murmulator.ru) | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2) |
-| 14 | [Adafruit Feather RP2350 with HSTX Port](https://www.adafruit.com/product/6130) with TLV320DAC3100 I2S DAC and microSD breakout | [pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
+| 2 | [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107) with [Adafruit DVI Breakout](https://www.adafruit.com/product/4984) and a microSD breakout, on a breadboard or on the [PicoNES PCB](#picones-pcb) | [picosnesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitDVISD_pico2_arm.uf2) |
+| 8 | [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) (primary development and test board) | [picosnesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFruitJam_arm_piousb.uf2) |
+| 13 | [Murmulator M2](https://murmulator.ru) | [picosnesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_MurmulatorM2_arm.uf2) |
+| 14 | [Adafruit Feather RP2350 with HSTX Port](https://www.adafruit.com/product/6130) with TLV320DAC3100 I2S DAC and microSD breakout | [picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
 
 Notes per configuration:
 
-- **HW_CONFIG 2**: a plain Raspberry Pi Pico 2 does not work — it has no PSRAM. The Pimoroni Pico Plus 2 (with onboard PSRAM) is required.
+- **HW_CONFIG 2**: a plain Raspberry Pi Pico 2 does not work — it has no PSRAM. The Pimoroni Pico Plus 2 (with onboard PSRAM) is required. The [PicoNES PCB](#picones-pcb) is the tidy version of this configuration; it needs design v2.6 or later, which is the first that can host a Pimoroni Pico Plus 2. The two builds take different microSD breakouts: on a breadboard the [Adafruit Micro-SD breakout board+](https://www.adafruit.com/product/254), on the PCB the smaller [Adafruit Micro SD SPI or SDIO breakout](https://www.adafruit.com/product/4682), which is the footprint the board is laid out for.
 - **HW_CONFIG 8**: no additional hardware is required apart from a game controller. Audio is output through the monitor and the built-in speaker or headphone jack.
 - **HW_CONFIG 14**: the Feather RP2350 is sold in two variants: [with 8 MB PSRAM onboard](https://www.adafruit.com/product/6130) and [without PSRAM](https://www.adafruit.com/product/6000). On the variant without PSRAM, a PSRAM chip must be soldered onto the board separately.
 
-For wiring and assembly instructions, see the setup sections of the [pico-infonesPlus README](https://github.com/fhoedemakers/pico-infonesPlus#setup). Flashing works the same for every board: hold BOOTSEL while connecting the board over USB, then copy the `.uf2` file onto the USB drive that appears.
+For wiring and assembly instructions, see the setup sections of the [pico-infonesPlus README](https://github.com/fhoedemakers/pico-infonesPlus#setup); for the PCB version of HW_CONFIG 2, see [PicoNES PCB](#picones-pcb) below. Flashing works the same for every board: hold BOOTSEL while connecting the board over USB, then copy the `.uf2` file onto the USB drive that appears.
+
+***
+
+## PicoNES PCB
+
+The PicoNES is a community PCB design by [@johnedgarpark](https://twitter.com/johnedgarpark) that turns the HW_CONFIG 2 breadboard build into a finished little console: it carries a Pico-format board, the DVI and microSD breakouts and up to two controller ports on a single board, with an optional 3D-printed case. Nothing changes in the firmware — it is simply a neater way to build hardware this emulator already supports, so you flash the same HW_CONFIG 2 binary and you are done. The current design is **v2.6**.
+
+> [!IMPORTANT]
+> For this emulator the PCB only works with a [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107), and that board needs design **v2.6 or later** plus male headers. A Raspberry Pi Pico 2 or Pico 2 W has no PSRAM and cannot run pico-snesPlus at all, so an older PicoNES board built around one of those cannot be reused here — see [Mounting the board](#mounting-the-board).
+
+<img width="480" alt="Populated PCB with a Pico plugged into the through-holes" src="https://github.com/user-attachments/assets/2bbc846d-56b1-4528-9899-01bc9b32ce11" />
+
+The gerber archive `pico_nesPCB_v2.6.zip` is attached to every [release](https://github.com/fhoedemakers/pico-snesPlus/releases/latest) of this project and also lives in [`pico_shared/PCB`](https://github.com/fhoedemakers/pico_shared/tree/main/PCB). Upload the zip as-is to a PCB manufacturer of your choice; [PCBWay](https://www.pcbway.com/) and JLCPCB are both good options.
+
+The design comes from [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) and kept its NES-flavoured name, but there is nothing NES-specific about it — it is DVI, microSD and controller wiring, and this emulator runs on it just as well. Two smaller designs from that project, the PicoNES Mini and PicoNES Micro, are **not** usable here: they are built around Waveshare boards without PSRAM, which this emulator requires.
+
+> [!NOTE]
+> Sellers on AliExpress have copied the PicoNES design and sell ready-made boards. For questions about those, contact the seller.
+
+### Mounting the board
+
+Design v2.6 added through-holes, and that is what makes a Pimoroni Pico Plus 2 — and with it the PSRAM this emulator needs — an option at all:
+
+| PCB design | Takes a Pimoroni Pico Plus 2? |
+| --- | --- |
+| v2.6 or later (through-holes) | Yes — with male headers soldered on, plugged into the through-holes |
+| v2.1 and older | No — the board has to lie flat against the PCB, which the SP/CE connector on its back prevents |
+
+> [!NOTE]
+> Soldering skills are required. Solder every connection from the board to the PCB, including the ones on the short right-hand side — those are ground.
+
+### What you need
+
+- A [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107) with **male headers** soldered on ([these](https://a.co/d/dSNPuyo) fit), plugged into the through-holes of a v2.6 or later board.
+- [Adafruit DVI Breakout Board — For HDMI Source Devices](https://www.adafruit.com/product/4984)
+- [Adafruit Micro SD SPI or SDIO Card Breakout Board — 3V ONLY!](https://www.adafruit.com/product/4682) — note this is **not** the Micro-SD breakout board+ used in the breadboard build; the PCB is laid out for this smaller one.
+- For controllers on the GPIO ports:
+  * [one or two NES controller ports](https://www.zedlabz.com/products/controller-connector-port-for-nintendo-nes-console-7-pin-90-degree-replacement-2-pack-black-zedlabz)
+  * [one or two SNES or NES controllers](https://www.amazon.com/s?k=SNES+controller)
+- [Micro USB to OTG Y-cable](https://a.co/d/b9t11rl) if you want to use a USB game controller — it powers the board and connects the controller at the same time.
+- Micro USB power supply.
+- Optional: an on/off switch, such as [this one](https://www.kiwi-electronics.com/en/spdt-slide-switch-410?search=KW-2467).
+
+Two controllers give you a two-player setup; a USB controller for player 1 and a controller in either GPIO port for player 2 works just as well. Audio on this configuration is carried over HDMI.
+
+> [!NOTE]
+> Although the sockets are NES connectors, they speak the SNES protocol as well and clock all 16 bits, so a real SNES pad maps 1:1 — see [Controllers](#controllers). The connectors differ, so a SNES pad needs a [SNES-to-NES adapter cable you make yourself](snestonescontroller.md) — one per socket. Ready-made cables exist but are hard to find, and some simply do not work as expected. A NES controller also works, with A→B and B→Y.
+
+<img width="480" alt="Two-player setup with NES controllers" src="https://github.com/user-attachments/assets/d40ed98f-4632-4161-986a-732d35290fac" />
+
+### Which binary to flash
+
+`picosnesPlus_AdafruitDVISD_pico2_arm.uf2` — the same file as the breadboard build, since the PCB is the same hardware configuration. Unlike the sister projects there is no separate Pico 2 W image here: that board has no PSRAM and is not supported.
+
+### 3D printed case
+
+Gavin Knight ([DynaMight1124](https://github.com/DynaMight1124)) designed an NES-like enclosure for this PCB: [thingiverse.com/thing:6689537](https://www.thingiverse.com/thing:6689537). The v2.0 design has a base, a power-switch part and a choice of two top covers — one with a button that reaches the BOOTSEL button so firmware can be updated without opening the case, one without. Print the files that match the PCB version you own; Gavin's Thingiverse page has the details.
+
+> [!IMPORTANT]
+> Download the **latest** top cover. The Pimoroni Pico Plus 2 is always mounted on headers here, and headers raise the board — only the newest cover leaves room for the USB cable, the older ones assume a Pico soldered flat onto the PCB.
+
+<img width="480" alt="Top cover with a button for BOOTSEL" src="https://github.com/user-attachments/assets/3c8f8990-51b9-4873-9054-64bb2cd6c300" />
+
+For the full photo gallery and assembly detail, see the [PCB section of the pico-infonesPlus documentation](https://github.com/fhoedemakers/pico-infonesPlus#pcb-with-raspberry-pi-pico-or-pico-2-and-pimoroni-pico-plus-2).
 
 ***
 
@@ -228,7 +301,8 @@ The bundled snes9x core also compiles natively on Linux. [tools/host-harness](to
 
 - The [Snes9x](https://github.com/snes9xgit/snes9x) authors, and the maintainers of the ndssfc/CATSFC line of C ports on which the bundled core is based.
 - The menu, HDMI driver, PSRAM allocator, and controller code in [pico_shared](https://github.com/fhoedemakers/pico_shared) are shared with the sister projects listed at the top of this README.
-- Metadata and M2 testing by [DynaMight1124](https://github.com/DynaMight1124)
+- Metadata, M2 testing and the 3D-printed case for the PicoNES PCB by [DynaMight1124](https://github.com/DynaMight1124)
+- The [PicoNES PCB](#picones-pcb) was designed by **John Edgar Park** ([@johnedgarpark](https://twitter.com/johnedgarpark)).
 
 ## Use of AI
 

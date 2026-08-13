@@ -13,7 +13,7 @@ Release notes for pico-snesPlus. Newest release first.
 
 # v0.2
 
-Everything listed under [v0.1](#v01) still applies — the features and the known limitations. This release adds MSU-1 soundtrack support and can be started from the pico-bootLoader boot menu.
+Everything listed under [v0.1](#v01) still applies — the features and the known limitations. This release adds MSU-1 soundtrack support, can be started from the pico-bootLoader boot menu, and documents the PicoNES PCB.
 
 ## MSU-1 soundtracks
 
@@ -45,9 +45,21 @@ pico-snesPlus can now be launched from [pico-bootLoader](https://github.com/fhoe
 
 The bootloader ships its own copy of this emulator in the SD-card archive on its releases page, so nothing here needs to be downloaded for that. If you do not use the bootloader, nothing changes: flash the `.uf2` for your board as before.
 
+## The PicoNES PCB
+
+The README has a [PicoNES PCB](https://github.com/fhoedemakers/pico-snesPlus#picones-pcb) chapter covering the community PCB design that turns the HW_CONFIG 2 breadboard build into a finished little console: the parts it needs, how the board is mounted, which binary to flash and the matching 3D-printed case. The gerber archive `pico_nesPCB_v2.6.zip` is attached to this release.
+
+**PCB design v2.6 is what makes this work.** The design gained through-holes, so a [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107) fitted with male headers can be plugged in instead of soldering a board flat. That matters more here than in the sister projects: this emulator needs PSRAM, so the Pimoroni Pico Plus 2 is the only board on that PCB that can run it at all. On v2.1 and older designs the board has to lie flat, which the SP/CE connector on its back prevents — an older PicoNES board built around a Pico 2 cannot be reused for pico-snesPlus. That is why **v2.1 is no longer offered here**: it is not suitable for this emulator. No separate binary is needed: flash the same `picosnesPlus_AdafruitDVISD_pico2_arm.uf2` as the breadboard build. When the board is mounted on headers, print the **latest** top cover from Thingiverse; the older ones assume a board soldered flat and leave no room for the USB cable.
+
+The two smaller designs from pico-infonesPlus, the PicoNES Mini and PicoNES Micro, are **not** usable with this emulator either — they are built around Waveshare boards without PSRAM — so their gerbers are not attached.
+
+The GPIO controller ports on the PCB (and on a breadboard build) use NES connectors but speak the SNES protocol and clock all 16 bits, so a real SNES pad maps 1:1. [snestonescontroller.md](https://github.com/fhoedemakers/pico-snesPlus/blob/main/snestonescontroller.md) describes the SNES-to-NES adapter cable you need to make for it.
+
 ## Other changes
 
-- The PCB design files moved to the shared `pico_shared` repository. The downloads below are unchanged.
+- **The README opens with the list of hardware configurations it runs on**, so you no longer have to scroll to find out whether your board is supported. Each entry links to [Supported hardware](https://github.com/fhoedemakers/pico-snesPlus#supported-hardware) for the binary, and to the PCB design where one applies.
+- The PCB design files moved to the shared `pico_shared` repository, and the stale `PCB/` copy was removed from this one — it still advertised a gerber it did not contain.
+- Fixed object file extension handling in the CMake configuration.
 - MSU-1 support was developed with the help of [Anthropic Claude](https://www.anthropic.com/claude), like the rest of the port.
 
 # v0.1
@@ -127,14 +139,15 @@ Only the four RP2350 + PSRAM configurations below are supported. For board-by-bo
 
 | HW_CONFIG | Board | Binary |
 |:--|:--|:--|
-| 2 | Breadboard with Pimoroni Pico Plus 2 | [pico_snesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitDVISD_pico2_arm.uf2) |
-| 8 | Adafruit Fruit Jam | [pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFruitJam_arm_piousb.uf2) |
-| 13 | Murmulator M2 | [pico_snesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_MurmulatorM2_arm.uf2)  |
-| 14 | Adafruit Feather RP2350 with TLV320DAC3100 | [pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_snesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
+| 2 | Pimoroni Pico Plus 2, on a breadboard or on the PicoNES PCB | [picosnesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitDVISD_pico2_arm.uf2) |
+| 8 | Adafruit Fruit Jam | [picosnesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFruitJam_arm_piousb.uf2) |
+| 13 | Murmulator M2 | [picosnesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_MurmulatorM2_arm.uf2)  |
+| 14 | Adafruit Feather RP2350 with TLV320DAC3100 | [picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
 
 ## Other downloads
 
 - Metadata: [SNESMetadata.zip](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/SNESMetadata.zip)
+- PicoNES PCB gerbers: [pico_nesPCB_v2.6.zip](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_nesPCB_v2.6.zip) — upload as-is to a PCB manufacturer. See [PicoNES PCB](https://github.com/fhoedemakers/pico-snesPlus#picones-pcb) in the README.
 
 Extract the zip file to the root folder of the SD card. Select a game in the menu and press START to show more information and box art. Works for most official released games. The screensaver shows floating random cover art.
 
