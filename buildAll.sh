@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the bootLoader for every supported RP2350 hardware
+# Build pico-snesPlus for every supported RP2350 hardware
 # configuration. Outputs land in releases/.
 set -e
 cd "$(dirname "$0")"
@@ -19,7 +19,7 @@ done
 
 
 echo
-echo "Built loader binaries:"
+echo "Built binaries:"
 for UF2 in releases/*.uf2; do
     ls -l "$UF2"
 done

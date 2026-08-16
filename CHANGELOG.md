@@ -1,6 +1,6 @@
 # CHANGELOG
 
-Release notes for pico-snesPlus. Newest release first.
+**v0.3** adds a **Recently played** list of the last 20 games, opened with X in the ROM browser. A SNES pad on the GPIO controller port is now read by button label in the menu, the controller test screen names its buttons per detected pad type, and several settings-menu bugs are fixed. The emulator core is unchanged.
 
 # General Info
 
@@ -10,6 +10,41 @@ Release notes for pico-snesPlus. Newest release first.
 
 > [!IMPORTANT]
 > An **RP2350** board with **8 MB PSRAM** is required. The original RP2040 (Pico 1), and RP2350 boards without PSRAM, are not supported.
+
+> [!WARNING]
+> **The optional 504 MHz overclock in the settings menu is not advised. Leave it off.**
+>
+> It gains very little — the bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed as at the default 378 MHz. It raises the core voltage, makes the chip run considerably hotter, and can overheat, destabilise or permanently damage the RP2350 and the board it is on. It is off by default and exists for experimenting only. Enabling it is entirely at your own risk; the author accepts no responsibility for any damage.
+
+# v0.3
+
+Updates the shared menu and support code (`pico_shared`). The emulator core is unchanged. Everything listed under [v0.2](#v02) and [v0.1](#v01) still applies.
+
+## Recently played games
+
+The menu keeps a list of the last 20 games started, most recent first. It is opened with **X** in the ROM browser, or with the **Recently played** entry at the top of the settings menu. That entry is present only when the settings menu is opened from the ROM browser, not from a running game; it is the route for pads without an X button, such as a NES pad on the GPIO port.
+
+In the list, **A** starts the highlighted game, **Select** removes an entry after a confirmation, **Start** shows its metadata and box art, and **B** closes the list. Entries are added automatically when a game is started; starting a game already in the list moves it to the top. The list closes after a minute without input.
+
+The list is stored as plain text in `/recent_SNES.txt` in the root of the SD card, one game per line. It survives a reboot and can be read, edited or deleted on a PC. A missing or damaged file is treated as an empty list; no other settings are affected. Each emulator running under [pico-bootLoader](https://github.com/fhoedemakers/pico-bootLoader) keeps its own list. An entry whose ROM is no longer on the card is reported as missing instead of started, and can be removed with Select.
+
+See [Recently played games](https://github.com/fhoedemakers/pico-snesPlus#recently-played-games) in the README.
+
+## Overclocking
+
+The 504 MHz overclock option is now documented as not advised; see the warning above and the [Overclocking section](https://github.com/fhoedemakers/pico-snesPlus#overclocking) in the README. The default clock of 378 MHz is unchanged.
+
+## The PicoNES PCB
+
+Unchanged since [v0.2](#v02): design **v2.6** is required, and the gerber archive `pico_nesPCB_v2.6.zip` is attached to this release as before. The README chapter describing it is now called [Custom PCB](https://github.com/fhoedemakers/pico-snesPlus#custom-pcb) and lists the applicable design in a table; the PicoNES Mini and PicoNES Micro remain not applicable to this emulator, since they are built around Waveshare boards without PSRAM.
+
+## Other changes
+
+- **Menu, SNES pad on the GPIO port**: the four face buttons are now read by label instead of positionally, so A chooses, B goes back and X opens the recently played list, as on USB and Wii Classic pads. NES pads are unchanged.
+- **Controller test screen**: reports the detected pad type (NES or SNES) for a pad on the GPIO port and names its buttons accordingly, and shows the raw port word.
+- **Fixed the settings menu discarding its result** after a screen opened from it was closed, which made starting a game from the recently played list return to the browser without effect, and the controller test start the screensaver on exit.
+- **Fixed "Reset to defaults"** carrying over a stale value of the obsolete standalone scanline toggle instead of restoring the off state.
+- Reduced stack use in the menu: the ROM browser no longer keeps a 592-byte `FIL` on the 3 KB core 0 stack.
 
 # v0.2
 

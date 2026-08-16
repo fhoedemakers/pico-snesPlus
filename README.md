@@ -97,11 +97,20 @@ The bottleneck is PSRAM bandwidth, not the CPU clock, so the optional overclock 
 
 ## Overclocking
 
-By default the RP2350 is overclocked to 378 MHz for this emulator. This clock gives stable performance across the tested games.
+By default the RP2350 is overclocked to 378 MHz for this emulator. This clock gives stable performance across the tested games, and is the setting the emulator is developed and tested with.
 
-On HW_CONFIG 2 (Pimoroni Pico Plus 2 breadboard or PicoNES PCB) and HW_CONFIG 8 (Adafruit Fruit Jam), the settings menu has an optional overclock that raises the clock to 504 MHz; it is not offered on the Murmulator M2 (13) or the Feather RP2350 (14). **Enabling it can lead to instabilities and crashes**, and the performance gain is minimal: the real bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed at 504 MHz as they do at 378 MHz. Only enable it if you want to experiment, and expect reduced stability.
+On HW_CONFIG 2 (Pimoroni Pico Plus 2 breadboard or PicoNES PCB) and HW_CONFIG 8 (Adafruit Fruit Jam), the settings menu has an optional overclock that raises the clock to 504 MHz; it is not offered on the Murmulator M2 (13) or the Feather RP2350 (14).
 
-Use this software at your own risk. I am not responsible in any way for damage to your board and/or connected peripherals caused by using this software, nor for damage caused by incorrect wiring or voltages.
+> [!WARNING]
+> **The 504 MHz option is not advised. Leave it off.**
+>
+> - **It gains very little.** The bottleneck is PSRAM bandwidth, not the CPU clock. Most games run at essentially the same speed at 504 MHz as at 378 MHz, Star Fox included.
+> - **It raises the core voltage and makes the chip run considerably hotter.** Sustained operation at that clock and voltage can overheat, destabilise or permanently damage the RP2350 and the board it is on, and shorten its lifetime.
+> - **It causes instability and crashes**, which is why it is off by default.
+>
+> The option exists for experimenting only. If you enable it, you do so entirely at your own risk.
+
+Use this software at your own risk. I am not responsible in any way for damage to your board and/or connected peripherals caused by using this software, by enabling the overclock option, or by incorrect wiring or voltages.
 
 ***
 
@@ -126,23 +135,31 @@ For wiring and assembly instructions, see the setup sections of the [pico-infone
 
 ***
 
-## PicoNES PCB
+## Custom PCB
 
-The PicoNES is a community PCB design by [@johnedgarpark](https://twitter.com/johnedgarpark) that turns the HW_CONFIG 2 breadboard build into a finished little console: it carries a Pico-format board, the DVI and microSD breakouts and up to two controller ports on a single board, with an optional 3D-printed case. Nothing changes in the firmware — it is simply a neater way to build hardware this emulator already supports, so you flash the same HW_CONFIG 2 binary and you are done. The current design is **v2.6**.
+A community PCB design turns the HW_CONFIG 2 breadboard build into a finished little console: it carries a Pico-format board, the DVI and microSD breakouts and up to two controller ports on a single board, with an optional 3D-printed case. Nothing changes in the firmware — it is simply a neater way to build hardware this emulator already supports, so you flash the same HW_CONFIG 2 binary and you are done.
+
+| Design | Board it carries | Build | Gerber archive | Designed by |
+| --- | --- | --- | --- | --- |
+| [PicoNES](#picones-pcb) | Pimoroni Pico Plus 2 on male headers — design **v2.6** or later only | `-c2` | `pico_nesPCB_v2.6.zip` | John Edgar Park |
+
+The archive is attached to every [release](https://github.com/fhoedemakers/pico-snesPlus/releases/latest) of this project and also lives in [`pico_shared/PCB`](https://github.com/fhoedemakers/pico_shared/tree/main/PCB). Upload the zip as-is to a PCB manufacturer of your choice; [PCBWay](https://www.pcbway.com/) and JLCPCB are both good options.
+
+The other two designs from [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus), the **PicoNES Mini** and **PicoNES Micro**, are **not applicable** to this emulator: they are built around Waveshare boards without PSRAM, which pico-snesPlus requires. Their gerbers are not attached to releases of this project. Older PicoNES designs (v2.1 and earlier) are not applicable either, for the reason given below.
+
+> [!NOTE]
+> Sellers on AliExpress have copied the PicoNES design and sell ready-made boards. For questions about those, contact the seller.
+
+### PicoNES PCB
+
+The design, by [@johnedgarpark](https://twitter.com/johnedgarpark), comes from [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) and kept its NES-flavoured name, but there is nothing NES-specific about it — it is DVI, microSD and controller wiring, and this emulator runs on it just as well. The current design is **v2.6**.
 
 > [!IMPORTANT]
 > For this emulator the PCB only works with a [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107), and that board needs design **v2.6 or later** plus male headers. A Raspberry Pi Pico 2 or Pico 2 W has no PSRAM and cannot run pico-snesPlus at all, so an older PicoNES board built around one of those cannot be reused here — see [Mounting the board](#mounting-the-board).
 
 <img width="480" alt="Populated PCB with a Pico plugged into the through-holes" src="https://github.com/user-attachments/assets/2bbc846d-56b1-4528-9899-01bc9b32ce11" />
 
-The gerber archive `pico_nesPCB_v2.6.zip` is attached to every [release](https://github.com/fhoedemakers/pico-snesPlus/releases/latest) of this project and also lives in [`pico_shared/PCB`](https://github.com/fhoedemakers/pico_shared/tree/main/PCB). Upload the zip as-is to a PCB manufacturer of your choice; [PCBWay](https://www.pcbway.com/) and JLCPCB are both good options.
-
-The design comes from [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) and kept its NES-flavoured name, but there is nothing NES-specific about it — it is DVI, microSD and controller wiring, and this emulator runs on it just as well. Two smaller designs from that project, the PicoNES Mini and PicoNES Micro, are **not** usable here: they are built around Waveshare boards without PSRAM, which this emulator requires.
-
-> [!NOTE]
-> Sellers on AliExpress have copied the PicoNES design and sell ready-made boards. For questions about those, contact the seller.
-
-### Mounting the board
+#### Mounting the board
 
 Design v2.6 added through-holes, and that is what makes a Pimoroni Pico Plus 2 — and with it the PSRAM this emulator needs — an option at all:
 
@@ -154,7 +171,7 @@ Design v2.6 added through-holes, and that is what makes a Pimoroni Pico Plus 2 �
 > [!NOTE]
 > Soldering skills are required. Solder every connection from the board to the PCB, including the ones on the short right-hand side — those are ground.
 
-### What you need
+#### What you need
 
 - A [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107) with **male headers** soldered on ([these](https://a.co/d/dSNPuyo) fit), plugged into the through-holes of a v2.6 or later board.
 - [Adafruit DVI Breakout Board — For HDMI Source Devices](https://www.adafruit.com/product/4984)
@@ -173,11 +190,11 @@ Two controllers give you a two-player setup; a USB controller for player 1 and a
 
 <img width="480" alt="Two-player setup with NES controllers" src="https://github.com/user-attachments/assets/d40ed98f-4632-4161-986a-732d35290fac" />
 
-### Which binary to flash
+#### Which binary to flash
 
 `picosnesPlus_AdafruitDVISD_pico2_arm.uf2` — the same file as the breadboard build, since the PCB is the same hardware configuration. Unlike the sister projects there is no separate Pico 2 W image here: that board has no PSRAM and is not supported.
 
-### 3D printed case
+#### 3D printed case
 
 Gavin Knight ([DynaMight1124](https://github.com/DynaMight1124)) designed an NES-like enclosure for this PCB: [thingiverse.com/thing:6689537](https://www.thingiverse.com/thing:6689537). The v2.0 design has a base, a power-switch part and a choice of two top covers — one with a button that reaches the BOOTSEL button so firmware can be updated without opening the case, one without. Print the files that match the PCB version you own; Gavin's Thingiverse page has the details.
 
@@ -220,7 +237,9 @@ Every supported controller delivers the full SNES button set (B, Y, Select, Star
 
 Two players: a second USB pad is player 2. When a USB pad is connected, the GPIO NES/SNES pad and the Wii Classic pad act as player 2; without one they are player 1.
 
-The settings menu contains a controller test screen that shows which button the emulator receives for each press.
+The settings menu contains a controller test screen that shows which button the emulator receives for each press. For a pad on the GPIO port it also reports which kind of pad it detected (NES or SNES) and names the buttons accordingly, since the two shift out the same bits with different meanings.
+
+In the menu itself, a SNES pad on the GPIO port is read by label like a USB or Wii Classic pad: **A** chooses, **B** goes back and **X** opens the [recently played list](#recently-played-games). A NES pad keeps the NES order.
 
 See the [pico-infonesPlus README](https://github.com/fhoedemakers/pico-infonesPlus#gamecontroller-support) for general controller notes and troubleshooting.
 
@@ -261,12 +280,37 @@ In the menu:
 - **Up/Down**: previous/next item, **Left/Right**: previous/next page.
 - **A**: open folder / start the selected game.
 - **B**: back to the parent folder.
+- **X**: open the [recently played list](#recently-played-games).
 - **Start**: show game metadata and box art.
 - **Select**: open the settings menu.
 
 In game:
 
 - **Select + Start** opens the settings menu. From there you can quit to the ROM menu (which writes the cartridge's battery save to the SD card), reset the game, or change settings: screen mode (8:7 or 1:1, with or without scanlines), frame rate display, audio on/off, frame skip, rapid-fire on A/B, font colors, the controller test screen, and board-specific options such as speaker volume and the NeoPixel VU meter on the Fruit Jam. Settings are remembered across restarts.
+
+***
+
+## Recently played games
+
+The menu keeps a list of the **last 20 games you started**, most recent first. Open it with **X** in the ROM browser, or with the **Recently played** entry at the top of the settings menu. That entry is only present when the settings menu is opened from the ROM browser — a game cannot be started from inside a running game.
+
+On a controller without an X button — notably a NES pad on the GPIO port — take the settings-menu route.
+
+In the list:
+
+| Button | Action |
+| --- | --- |
+| Up/Down | Select a game. |
+| A | Start the highlighted game. |
+| B | Close the list and return to the ROM browser. |
+| Select | Remove the highlighted game from the list. Asks for confirmation first. This removes the entry only; the ROM on the SD card is left alone. |
+| Start | Show [metadata](#metadata) and box art, when available. |
+
+Games are added to the list automatically when you start them, so nothing has to be enabled. Starting a game that is already in the list moves it back to the top. The list closes by itself after a minute without input.
+
+The list is kept in **`/recent_SNES.txt`** in the root of the SD card, as plain text with one game per line. It survives a reboot and can be read, edited or deleted on a PC. Deleting the file simply empties the list, and a damaged file is treated as an empty list — unlike the settings file, nothing else is reset. Each emulator running under [pico-bootLoader](https://github.com/fhoedemakers/pico-bootLoader) keeps its own list.
+
+If a game was moved, renamed or deleted on the SD card in the meantime, the list reports it as missing instead of starting it. Use **Select** to remove such an entry.
 
 ***
 

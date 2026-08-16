@@ -93,7 +93,7 @@ jobs:
           #           $PICOTOOL info $file
           #       done
 
-          - name: Copy PCEMetadata.zip to workspace
+          - name: Copy SNESMetadata.zip to workspace
             run: |
               cp /datalocal/upload/pico-infonesPlus/SNESMetadata.zip releases/SNESMetadata.zip
 
