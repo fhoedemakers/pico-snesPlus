@@ -1,10 +1,14 @@
-# How to create an adapter cable so you can use an SNES controller on your NES.
+# SNES-to-NES Controller Adapter Cable
 
 Source: "Using Super NES controllers with a NES" [snes_to_nes_controller.txt](http://www.neshq.com/hardmods/snes_to_nes_controller.txt)
 by Mark Knibbs (rev. 0.1, 5 Apr 1998), reproduced here and reformatted as
 Markdown.
 
 <img width="640" alt="SNES controller adapter cable for NES consoles" src="https://github.com/user-attachments/assets/56f9152f-ed77-4be6-b7eb-3425b5c73a47" />
+
+*Photo credit: Gavin Knight. [@DynaMight1124](https://github.com/DynaMight1124)*
+
+
 
 ---
 
