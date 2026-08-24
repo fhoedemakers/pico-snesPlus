@@ -25,7 +25,7 @@ message("* Current build type is : ${CMAKE_BUILD_TYPE}")
 
 # Hardware / board selection. RP2350+PSRAM+HSTX only for this build.
 if(NOT HW_CONFIG)
-    set(HW_CONFIG 2 CACHE STRING "Select the hardware configuration for your board")
+    set(HW_CONFIG 8 CACHE STRING "Select the hardware configuration for your board")
 endif()
 if(NOT USE_HSTX)
     set(USE_HSTX 1 CACHE STRING "Use HSTX for display output")

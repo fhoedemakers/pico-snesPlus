@@ -1,6 +1,6 @@
 # CHANGELOG
 
-**v0.3** adds a **Recently played** list of the last 20 games, opened with X in the ROM browser. A SNES pad on the GPIO controller port is now read by button label in the menu, the controller test screen names its buttons per detected pad type, and several settings-menu bugs are fixed. The emulator core is unchanged.
+**v0.4** is a maintenance release. It updates the shared menu and support code, fixing a black screen on **DVI-only monitors** and making start-up steadier. The emulator core is unchanged.
 
 # General Info
 
@@ -15,6 +15,15 @@
 > **The optional 504 MHz overclock in the settings menu is not advised. Leave it off.**
 >
 > It gains very little — the bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed as at the default 378 MHz. It raises the core voltage, makes the chip run considerably hotter, and can overheat, destabilise or permanently damage the RP2350 and the board it is on. It is off by default and exists for experimenting only. Enabling it is entirely at your own risk; the author accepts no responsibility for any damage.
+
+# v0.4
+
+A maintenance release. It brings the shared menu and support code up to date; the emulator itself is unchanged. Upgrading is only a matter of flashing the new `.uf2` — your settings, saves and save states on the SD card are untouched.
+
+## Fixes
+
+- **DVI-only monitors show a picture again.** With **Display Mode** set to DVI, some older screens that accept DVI but not HDMI stayed black. They work again.
+- **Steadier start-up.** The board lets its power settle before switching to the higher clock speed.
 
 # v0.3
 
