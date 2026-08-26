@@ -68,6 +68,14 @@ You get the idea. Below I will describe how to make an adapter using two
 controller extension cables. These should be available cheaply in video game
 shops. The procedure if you are doing it another way should be very similar.
 
+> **Note — a modern shortcut (not part of the original 1998 text):**
+> Instead of cutting the connector off an existing controller or extension
+> cable, you can buy a bare 7-pin controller connector — for example
+> [this one on AliExpress](https://nl.aliexpress.com/item/1005006424999034.html) —
+> and 3D print a cap for it. The STL is in this repo:
+> [assets/SNES Controller Port Cap.stl](assets/SNES%20Controller%20Port%20Cap.stl)
+> ([view on GitHub](https://github.com/fhoedemakers/pico-snesPlus/blob/main/assets/SNES%20Controller%20Port%20Cap.stl)).
+
 ---
 
 ## Some Basics
