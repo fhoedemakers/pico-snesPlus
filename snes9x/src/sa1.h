@@ -31,6 +31,9 @@ typedef struct
    uint32_t      ShiftedPB;
    uint32_t      ShiftedDB;
    uint32_t      Flags;
+   int32_t       Cycles;
+   int32_t       MemSpeed;
+   int32_t       MemSpeedx2;
    bool          Executing;
    bool          NMIActive;
    uint8_t       IRQActive;

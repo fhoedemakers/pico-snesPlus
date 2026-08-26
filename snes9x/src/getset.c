@@ -3,6 +3,7 @@
 #include "ppu.h"
 #include "dsp.h"
 #include "cpuexec.h"
+#include "sa1.h"
 #include "obc1.h"
 
 extern uint8_t OpenBus;
@@ -133,6 +134,11 @@ void S9xSetByte(uint8_t Byte, uint32_t Address)
    if (SetAddress >= (uint8_t*) MAP_LAST)
    {
       SetAddress += Address & 0xffff;
+      if (SetAddress == SA1.WaitByteAddress1 || SetAddress == SA1.WaitByteAddress2)
+      {
+         SA1.Executing = SA1.S9xOpcodes != NULL;
+         SA1.WaitCounter = 0;
+      }
       *SetAddress = Byte;
       return;
    }
@@ -168,6 +174,7 @@ void S9xSetByte(uint8_t Byte, uint32_t Address)
       return;
    case MAP_SA1RAM:
       *(Memory.SRAM + (Address & 0xffff)) = Byte;
+      SA1.Executing = !SA1.Waiting;
       break;
    case MAP_C4:
       S9xSetC4(Byte, Address & 0xffff);
@@ -205,6 +212,11 @@ void S9xSetWord(uint16_t Word, uint32_t Address)
    if (SetAddress >= (uint8_t*) MAP_LAST)
    {
       SetAddress += Address & 0xffff;
+      if (SetAddress == SA1.WaitByteAddress1 || SetAddress == SA1.WaitByteAddress2)
+      {
+         SA1.Executing = SA1.S9xOpcodes != NULL;
+         SA1.WaitCounter = 0;
+      }
 #ifdef FAST_LSB_WORD_ACCESS
       *(uint16_t*)SetAddress = Word;
 #else
@@ -256,6 +268,7 @@ void S9xSetWord(uint16_t Word, uint32_t Address)
    case MAP_SA1RAM:
       *(Memory.SRAM + (Address & 0xffff)) = (uint8_t) Word;
       *(Memory.SRAM + ((Address + 1) & 0xffff)) = (uint8_t)(Word >> 8);
+      SA1.Executing = !SA1.Waiting;
       break;
    case MAP_C4:
       S9xSetC4(Word & 0xff, Address & 0xffff);
