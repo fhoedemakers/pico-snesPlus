@@ -24,6 +24,19 @@ void S9xSA1Init()
    SA1.Waiting = false;
    SA1.Flags = 0;
    SA1.Executing = false;
+   SA1.Cycles = CPU.Cycles * 3;
+   SA1.MemSpeed = ONE_CYCLE;
+   SA1.MemSpeedx2 = ONE_CYCLE * 2;
+   SA1.WaitAddress = NULL;
+   SA1.WaitByteAddress1 = NULL;
+   SA1.WaitByteAddress2 = NULL;
+   SA1.WaitCounter = 0;
+   if (strcmp(Memory.ROMId, "ARWJ") == 0 ||
+       strcmp(Memory.ROMId, "ARWE") == 0)
+   {
+      SA1.WaitAddress = SA1.Map[0xc0816f >> MEMMAP_SHIFT] + 0x816f;
+      SA1.WaitByteAddress1 = Memory.FillRAM + 0x3000;
+   }
    memset(&Memory.FillRAM [0x2200], 0, 0x200);
    Memory.FillRAM [0x2200] = 0x20;
    Memory.FillRAM [0x2220] = 0x00;
@@ -111,36 +124,46 @@ void S9xFixSA1AfterSnapshotLoad()
 
    SA1.Waiting = (Memory.FillRAM [0x2200] & 0x60) != 0;
    SA1.Executing = !SA1.Waiting;
+   SA1.Cycles = CPU.Cycles * 3;
 }
 
 uint8_t S9xSA1GetByte(uint32_t address)
 {
    uint8_t* GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
    if (GetAddress >= (uint8_t*) MAP_LAST)
+   {
+      SA1.Cycles += SA1.MemSpeed;
       return GetAddress[address & 0xffff];
+   }
 
    switch ((intptr_t) GetAddress)
    {
    case MAP_PPU:
+      SA1.Cycles += ONE_CYCLE;
       return S9xGetSA1(address & 0xffff);
    case MAP_LOROM_SRAM:
    case MAP_SA1RAM:
+      SA1.Cycles += TWO_CYCLES;
       return Memory.SRAM[address & 0xffff];
    case MAP_BWRAM:
+      SA1.Cycles += TWO_CYCLES;
       return SA1.BWRAM[(address & 0x7fff) - 0x6000];
    case MAP_BWRAM_BITMAP:
+      SA1.Cycles += TWO_CYCLES;
       address -= 0x600000;
       if (SA1.VirtualBitmapFormat == 2)
          return (Memory.SRAM [(address >> 2) & 0xffff] >> ((address & 3) << 1)) & 3;
       else
          return (Memory.SRAM [(address >> 1) & 0xffff] >> ((address & 1) << 2)) & 15;
    case MAP_BWRAM_BITMAP2:
+      SA1.Cycles += TWO_CYCLES;
       address = (address & 0xffff) - 0x6000;
       if (SA1.VirtualBitmapFormat == 2)
          return (SA1.BWRAM [(address >> 2) & 0xffff] >> ((address & 3) << 1)) & 3;
       else
          return (SA1.BWRAM [(address >> 1) & 0xffff] >> ((address & 1) << 2)) & 15;
    default:
+      SA1.Cycles += ONE_CYCLE;
       return OpenBus;
    }
 }
@@ -213,6 +236,12 @@ void S9xSA1SetWord(uint16_t Word, uint32_t address)
 
 void S9xSA1SetPCBase(uint32_t address)
 {
+   SA1.MemSpeed = ONE_CYCLE;
+   if ((address & 0xc00000) == 0x400000 ||
+       (address & 0x40e000) == 0x6000)
+      SA1.MemSpeed = TWO_CYCLES;
+   SA1.MemSpeedx2 = SA1.MemSpeed << 1;
+
    uint8_t* GetAddress = SA1.Map [(address >> MEMMAP_SHIFT) & MEMMAP_MASK];
    if (GetAddress >= (uint8_t*) MAP_LAST)
    {
@@ -328,7 +357,7 @@ void S9xSetSA1(uint8_t byte, uint32_t address)
    case 0x2200:
       SA1.Waiting = (byte & 0x60) != 0;
 
-      if (!(byte & 0x80) && (Memory.FillRAM[0x2200] & 0x20))
+      if (!(byte & 0x20) && (Memory.FillRAM[0x2200] & 0x20))
          S9xSA1Reset();
       if (byte & 0x80)
       {

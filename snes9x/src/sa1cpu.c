@@ -52,13 +52,17 @@
 #define StackRelative SA1StackRelative
 #define StackRelativeIndirectIndexed SA1StackRelativeIndirectIndexed
 
+#define SA1_CORE
 #define SA1_OPCODES
 
 #include "cpuops.c"
 
+#undef CPU
+#undef ICPU
+
 void S9xSA1MainLoop()
 {
-   int32_t i;
+   int32_t target_cycles = CPU.Cycles * 3;
 
    if (SA1.Flags & IRQ_PENDING_FLAG)
    {
@@ -76,9 +80,16 @@ void S9xSA1MainLoop()
          SA1.Flags &= ~IRQ_PENDING_FLAG;
    }
 
-   for (i = 0; i < 3 && SA1.Executing; i++)
+   if (!SA1.Executing)
+   {
+      SA1.Cycles = target_cycles;
+      return;
+   }
+
+   while (SA1.Cycles < target_cycles && SA1.Executing)
    {
       SA1.PCAtOpcodeStart = SA1.PC;
+      SA1.Cycles += SA1.MemSpeed;
       (*SA1.S9xOpcodes [*SA1.PC++].S9xOpcode)();
    }
 }

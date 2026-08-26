@@ -259,7 +259,9 @@ static INLINE void A_DEC16(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.A.W--;
    SetZN16(ICPU.Registers.A.W);
 }
@@ -269,7 +271,9 @@ static INLINE void A_DEC8(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.AL--;
    SetZN8(ICPU.Registers.AL);
 }
@@ -280,7 +284,9 @@ static INLINE void DEC16(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    Work16 = S9xGetWord(OpAddress) - 1;
    S9xSetByte(Work16 >> 8, OpAddress + 1);
    S9xSetByte(Work16 & 0xFF, OpAddress);
@@ -293,7 +299,9 @@ static INLINE void DEC8(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    Work8 = S9xGetByte(OpAddress) - 1;
    S9xSetByte(Work8, OpAddress);
    SetZN8(Work8);
@@ -316,7 +324,9 @@ static INLINE void A_INC16(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.A.W++;
    SetZN16(ICPU.Registers.A.W);
 }
@@ -326,7 +336,9 @@ static INLINE void A_INC8(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.AL++;
    SetZN8(ICPU.Registers.AL);
 }
@@ -337,7 +349,9 @@ static INLINE void INC16(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    Work16 = S9xGetWord(OpAddress) + 1;
    S9xSetByte(Work16 >> 8, OpAddress + 1);
    S9xSetByte(Work16 & 0xFF, OpAddress);
@@ -350,7 +364,9 @@ static INLINE void INC8(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    Work8 = S9xGetByte(OpAddress) + 1;
    S9xSetByte(Work8, OpAddress);
    SetZN8(Work8);

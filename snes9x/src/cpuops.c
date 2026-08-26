@@ -2359,7 +2359,7 @@ static void Op0CM0(void)
 }
 
 /* Branch Instructions */
-#ifndef SA1_OPCODES
+#ifndef SA1_CORE
 #define BranchCheck() \
    if(CPU.BranchSkip) \
    { \
@@ -2371,7 +2371,7 @@ static void Op0CM0(void)
 #define BranchCheck()
 #endif
 
-#ifndef SA1_OPCODES
+#ifndef SA1_CORE
 static INLINE void CPUShutdown(void)
 {
    if (Settings.Shutdown && CPU.PC == CPU.WaitAddress)
@@ -2421,7 +2421,7 @@ static INLINE void CPUShutdown(void)
 /* From the speed-hacks branch of CatSFC */
 static INLINE void ForceShutdown(void)
 {
-#ifndef SA1_OPCODES
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
 #ifndef USE_BLARGG_APU
    CPU.Cycles = CPU.NextEvent;
@@ -2615,7 +2615,9 @@ static void OpCAX1(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.XL--;
    SetZN8(ICPU.Registers.XL);
 }
@@ -2625,7 +2627,9 @@ static void OpCAX0(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.X.W--;
    SetZN16(ICPU.Registers.X.W);
 }
@@ -2635,7 +2639,9 @@ static void Op88X1(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.YL--;
    SetZN8(ICPU.Registers.YL);
 }
@@ -2645,7 +2651,9 @@ static void Op88X0(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.Y.W--;
    SetZN16(ICPU.Registers.Y.W);
 }
@@ -2656,7 +2664,9 @@ static void OpE8X1(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.XL++;
    SetZN8(ICPU.Registers.XL);
 }
@@ -2666,7 +2676,9 @@ static void OpE8X0(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.X.W++;
    SetZN16(ICPU.Registers.X.W);
 }
@@ -2676,7 +2688,9 @@ static void OpC8X1(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.YL++;
    SetZN8(ICPU.Registers.YL);
 }
@@ -2686,7 +2700,9 @@ static void OpC8X0(void)
 #ifndef SA1_OPCODES
    CPU.Cycles += ONE_CYCLE;
 #endif
+#ifndef SA1_CORE
    CPU.WaitAddress = NULL;
+#endif
    ICPU.Registers.Y.W++;
    SetZN16(ICPU.Registers.Y.W);
 }
@@ -3362,7 +3378,7 @@ void S9xOpcode_IRQ(void)
 
       ICPU.Registers.PB = 0;
       ICPU.ShiftedPB = 0;
-#ifdef SA1_OPCODES
+#ifdef SA1_CORE
       S9xSA1SetPCBase(Memory.FillRAM [0x2207] | (Memory.FillRAM [0x2208] << 8));
 #else
       if (Settings.SA1 && (Memory.FillRAM [0x2209] & 0x40))
@@ -3383,7 +3399,7 @@ void S9xOpcode_IRQ(void)
 
       ICPU.Registers.PB = 0;
       ICPU.ShiftedPB = 0;
-#ifdef SA1_OPCODES
+#ifdef SA1_CORE
       S9xSA1SetPCBase(Memory.FillRAM [0x2207] | (Memory.FillRAM [0x2208] << 8));
 #else
       if (Settings.SA1 && (Memory.FillRAM [0x2209] & 0x40))
@@ -3410,7 +3426,7 @@ void S9xOpcode_NMI(void)
 
       ICPU.Registers.PB = 0;
       ICPU.ShiftedPB = 0;
-#ifdef SA1_OPCODES
+#ifdef SA1_CORE
       S9xSA1SetPCBase(Memory.FillRAM [0x2205] | (Memory.FillRAM [0x2206] << 8));
 #else
       if (Settings.SA1 && (Memory.FillRAM [0x2209] & 0x20))
@@ -3431,7 +3447,7 @@ void S9xOpcode_NMI(void)
 
       ICPU.Registers.PB = 0;
       ICPU.ShiftedPB = 0;
-#ifdef SA1_OPCODES
+#ifdef SA1_CORE
       S9xSA1SetPCBase(Memory.FillRAM [0x2205] | (Memory.FillRAM [0x2206] << 8));
 #else
       if (Settings.SA1 && (Memory.FillRAM [0x2209] & 0x20))
@@ -3506,7 +3522,7 @@ static void Op4C(void)
 {
    Absolute(false);
    S9xSetPCBase(ICPU.ShiftedPB + (OpAddress & 0xffff));
-#ifdef SA1_OPCODES
+#ifdef SA1_CORE
    CPUShutdown();
 #endif
 }
@@ -3768,10 +3784,10 @@ static void Op40(void)
 /* WAI */
 static void OpCB(void)
 {
-#ifdef SA1_OPCODES
+#ifdef SA1_CORE
    SA1.WaitingForInterrupt = true;
    SA1.PC--;
-#else /* SA_OPCODES */
+#else
    CPU.WaitingForInterrupt = true;
    CPU.PC--;
    if (Settings.Shutdown)

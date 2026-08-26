@@ -70,12 +70,7 @@ void __not_in_flash_func(S9xMainLoop)()
       CPU.Cycles += CPU.MemSpeed;
       (*ICPU.S9xOpcodes [*CPU.PC++].S9xOpcode)();
 
-      /* SA-1 runs interleaved with the main CPU (up to 3 SA-1 opcodes per
-       * main opcode). SA1.Executing is false for non-SA-1 carts, so the
-       * branch is a cheap, predictable no-op there. Unlike SuperFX (run
-       * once per scanline at HBLANK_END), the SA-1 communicates with the
-       * main CPU through shared RAM/IRQs and needs fine interleaving. */
-      if (SA1.Executing)
+      if (Settings.SA1)
          S9xSA1MainLoop();
 
       if (CPU.Cycles >= CPU.NextEvent)
@@ -137,6 +132,8 @@ void __not_in_flash_func(S9xDoHBlankProcessing)()
       CPU.Cycles -= Settings.H_Max;
       S9xAPUSetReferenceTime(CPU.Cycles);
 #endif
+      if (Settings.SA1)
+         SA1.Cycles -= Settings.H_Max * 3;
       CPU.NextEvent = -1;
 
       if (++CPU.V_Counter >= (Settings.PAL ? SNES_MAX_PAL_VCOUNTER : SNES_MAX_NTSC_VCOUNTER))
