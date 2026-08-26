@@ -71,7 +71,7 @@ shops. The procedure if you are doing it another way should be very similar.
 > **Note — a modern shortcut (not part of the original 1998 text):**
 > Instead of cutting the connector off an existing controller or extension
 > cable, you can buy a bare 7-pin controller connector — for example
-> [this one on AliExpress](https://nl.aliexpress.com/item/1005006424999034.html) —
+> [this one on AliExpress](https://nl.aliexpress.com/item/1005006424999034.html) (make sure you choose the 180 degree version) —
 > and 3D print a cap for it. The STL designed by Gavin Knight. [@DynaMight1124](https://github.com/DynaMight1124) is in this repo:
 > [assets/SNES Controller Port Cap.stl](assets/SNES%20Controller%20Port%20Cap.stl)
 > ([view on GitHub](https://github.com/fhoedemakers/pico-snesPlus/blob/main/assets/SNES%20Controller%20Port%20Cap.stl)).
