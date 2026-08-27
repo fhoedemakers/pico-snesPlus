@@ -1,6 +1,6 @@
 # CHANGELOG
 
-**v0.4** is a maintenance release. It updates the shared menu and support code, fixing a black screen on **DVI-only monitors** and making start-up steadier. The emulator core is unchanged.
+**v0.5** fixes the **SA-1**, the extra chip inside Super Mario RPG, Kirby Super Star and Kirby's Dream Land 3. Super Mario RPG no longer freezes during battles. Nothing else changed.
 
 # General Info
 
@@ -15,6 +15,24 @@
 > **The optional 504 MHz overclock in the settings menu is not advised. Leave it off.**
 >
 > It gains very little — the bottleneck is PSRAM bandwidth, not the CPU clock, so most games run at essentially the same speed as at the default 378 MHz. It raises the core voltage, makes the chip run considerably hotter, and can overheat, destabilise or permanently damage the RP2350 and the board it is on. It is off by default and exists for experimenting only. Enabling it is entirely at your own risk; the author accepts no responsibility for any damage.
+
+# v0.5
+
+A small release with one real fix: **SA-1 timing**. Everything listed under [v0.4](#v04) and earlier still applies. The menu and support code (`pico_shared`) are unchanged, so upgrading is only a matter of flashing the new `.uf2` — your settings, saves and save states on the SD card are untouched.
+
+## SA-1 games
+
+A few cartridges carry a second, faster processor of their own: the SA-1, used by Super Mario RPG, Kirby Super Star, Kirby's Dream Land 3 and a handful of others. The emulator was not keeping it properly in step with the rest of the console, and **Super Mario RPG could freeze during battles** as a result.
+
+The timing is now right. Super Mario RPG plays through its battles, and the other games with this chip benefit from the same fix. Games run just as fast as before.
+
+This fix was contributed by [Amy (@zZmiz)](https://github.com/zZmiz) in [pull request #4](https://github.com/fhoedemakers/pico-snesPlus/pull/4) — thank you.
+
+## An easier SNES-to-NES adapter cable
+
+The GPIO controller ports on the PicoNES PCB and on a breadboard build use NES connectors but speak the SNES protocol, so plugging in a real SNES pad needs a small adapter cable. Making one used to start with cutting the connector off a controller or an extension cable.
+
+There is now a less destructive route: buy a bare 7-pin SNES connector (the **180 degree** version) and 3D print a cap for it. The model is in this repository as [assets/SNES Controller Port Cap.stl](https://github.com/fhoedemakers/pico-snesPlus/blob/main/assets/SNES%20Controller%20Port%20Cap.stl), designed by [Gavin Knight (@DynaMight1124)](https://github.com/DynaMight1124) — thank you. See [snestonescontroller.md](https://github.com/fhoedemakers/pico-snesPlus/blob/main/snestonescontroller.md) for the wiring and the rest of the build.
 
 # v0.4
 
