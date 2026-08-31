@@ -74,7 +74,7 @@ shops. The procedure if you are doing it another way should be very similar.
 > [this one on AliExpress](https://nl.aliexpress.com/item/1005006424999034.html) (make sure you choose the 180 degree version) —
 > and 3D print a cap for it. The STL designed by Gavin Knight. [@DynaMight1124](https://github.com/DynaMight1124) is in this repo:
 > [assets/SNES Controller Port Cap.stl](assets/SNES%20Controller%20Port%20Cap.stl)
-> ([view on GitHub](https://github.com/fhoedemakers/pico-snesPlus/blob/main/assets/SNES%20Controller%20Port%20Cap.stl)).
+> ([view on GitHub](https://github.com/PicoPlus-devel/pico-snesPlus/blob/main/assets/SNES%20Controller%20Port%20Cap.stl)).
 
 ---
 
