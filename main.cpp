@@ -157,33 +157,35 @@ static uint32_t CPUFreqKHz = EMULATOR_CLOCKFREQ_KHZ;
 /* SNES menu visibility — same shape as NES, drop FDS/DMG/border options
  * that don't apply. Non-const because settings might toggle entries later. */
 int8_t g_settings_visibility_snes[MOPT_COUNT] = {
-    0,                  /* MOPT_EXIT_GAME — set 1 at runtime when in-game */
-    0,                  /* MOPT_RESET_GAME — set 1 at runtime when in-game */
-    BOOTLOADER_BUILD,   /* MOPT_REBOOT_TO_LOADER */
-    -1,                  /* MOPT_SAVE_RESTORE_STATE — deferred */
-    1,                  /* MOPT_SCREENMODE */
-    0,                  /* MOPT_SCANLINES — superseded by Screen Mode */
-    HSTX,               /* MOPT_SCANLINE_TYPE */
-    1,                  /* MOPT_FPS_OVERLAY */
-    1,                  /* MOPT_AUDIO_ENABLE */
-    1,                  /* MOPT_FRAMESKIP */
-    HSTX && ENABLEDVI,  /* MOPT_DISPLAY_MODE */
-    EXT_AUDIO_IS_ENABLED,
-    1,                  /* MOPT_FONT_COLOR */
-    1,                  /* MOPT_FONT_BACK_COLOR */
-    ENABLE_VU_METER,
-    (HW_CONFIG == 8),   /* MOPT_FRUITJAM_VOLUME_CONTROL */
-    0,                  /* MOPT_DMG_PALETTE — NES/GB only */
-    0,                  /* MOPT_BORDER_MODE — GB only */
-    1,                  /* MOPT_RAPID_FIRE_ON_A */
-    1,                  /* MOPT_RAPID_FIRE_ON_B */
-    0,                  /* MOPT_AUTO_INSERT_FDS_DISK_A — NES/FDS only */
-    0,                  /* MOPT_AUTO_SWAP_FDS_DISK — NES/FDS only */
-    0,                  /* MOPT_FDS_DISK_SWAP — NES/FDS only */
-    (HSTX && (HW_CONFIG == 2 || HW_CONFIG == 8)),     /* MOPT_OVERCLOCK */
-    0,                  /* MOPT_FM_AUDIO — SMS-only */
-    1,                  /* MOPT_ENTER_BOOTSEL_MODE */
-    1,                  /* MOPT_CONTROLLER_TEST */
+    [MOPT_EXIT_GAME]                = 0,                  /* set 1 at runtime when in-game */
+    [MOPT_RESET_GAME]               = 0,                  /* set 1 at runtime when in-game */
+    [MOPT_REBOOT_TO_LOADER]         = BOOTLOADER_BUILD,   /* Return to emuLoader picker (only when built for the loader) */
+    [MOPT_SAVE_RESTORE_STATE]       = -1,                 /* Save / Restore State — deferred */
+    [MOPT_SCREENMODE]               = 1,                  /* Screen Mode */
+    [MOPT_SCANLINES]                = 0,                  /* Scanlines toggle (superseded by Screen Mode) */
+    [MOPT_SCANLINE_TYPE]            = HSTX,               /* Scanline Type (HSTX only) */
+    [MOPT_FPS_OVERLAY]              = 1,                  /* FPS Overlay */
+    [MOPT_AUDIO_ENABLE]             = 1,                  /* Audio Enable */
+    [MOPT_FRAMESKIP]                = 1,                  /* Frame Skip */
+    [MOPT_DISPLAY_MODE]             = HSTX && ENABLEDVI,  /* Display Mode (HDMI or DVI, HSTX builds only) */
+    [MOPT_EXTERNAL_AUDIO]           = EXT_AUDIO_IS_ENABLED, /* External Audio */
+    [MOPT_FONT_COLOR]               = 1,                  /* Font Color */
+    [MOPT_FONT_BACK_COLOR]          = 1,                  /* Font Back Color */
+    [MOPT_FRUITJAM_VUMETER]         = ENABLE_VU_METER,    /* VU Meter */
+    [MOPT_FRUITJAM_VOLUME_CONTROL]  = (HW_CONFIG == 8),   /* Fruit Jam Volume Control */
+    [MOPT_DMG_PALETTE]              = 0,                  /* DMG Palette — NES/GB only */
+    [MOPT_BORDER_MODE]              = 0,                  /* Border Mode — GB only */
+    [MOPT_RAPID_FIRE_ON_A]          = 1,                  /* Rapid Fire on A */
+    [MOPT_RAPID_FIRE_ON_B]          = 1,                  /* Rapid Fire on B */
+    [MOPT_AUTO_INSERT_FDS_DISK_A]   = 0,                  /* NES/FDS only */
+    [MOPT_AUTO_SWAP_FDS_DISK]       = 0,                  /* NES/FDS only */
+    [MOPT_FDS_DISK_SWAP]            = 0,                  /* NES/FDS only */
+    [MOPT_OVERCLOCK]                = (HSTX && (HW_CONFIG == 2 || HW_CONFIG == 8)), /* Overclock (CPU high clock toggle) */
+    [MOPT_FM_AUDIO]                 = 0,                  /* YM Audio — SMS only */
+    [MOPT_ENTER_BOOTSEL_MODE]       = 1,                  /* Enter bootsel mode */
+    [MOPT_CONTROLLER_TEST]          = 1,                  /* Controller Test */
+    [MOPT_RECENT_GAMES]             = 0,                  /* Recently played (menu.cpp force-shows this in the rom browser) */
+    [MOPT_USB_DRIVE_MODE]           = 0,                  /* USB drive mode (menu.cpp force-shows this in the rom browser) */
 };
 
 static const uint8_t g_available_screen_modes_snes[] = {
