@@ -4,10 +4,10 @@
 
 It is a sister project of these emulators, with which it shares its menu, display, and controller framework:
 
-- NES: [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus)
-- Sega Master System / Game Gear: [pico-smsplus](https://github.com/fhoedemakers/pico-smsplus)
-- Game Boy / Game Boy Color: [pico-peanutGB](https://github.com/fhoedemakers/pico-peanutGB)
-- Sega Mega Drive / Genesis: [pico-genesisPlus](https://github.com/fhoedemakers/pico-genesisPlus)
+- NES: [pico-infonesPlus](https://github.com/PicoPlus-devel/pico-infonesPlus)
+- Sega Master System / Game Gear: [pico-smsplus](https://github.com/PicoPlus-devel/pico-smsplus)
+- Game Boy / Game Boy Color: [pico-peanutGB](https://github.com/PicoPlus-devel/pico-peanutGB)
+- Sega Mega Drive / Genesis: [pico-genesisPlus](https://github.com/PicoPlus-devel/pico-genesisPlus)
 
 It runs on four hardware configurations, each with its own ready-made binary — see [Supported hardware](#supported-hardware) for the download links:
 
@@ -120,10 +120,10 @@ An RP2350 board with 8 MB of PSRAM is required. Only the four hardware configura
 
 | HW_CONFIG | Hardware | Binary |
 | --- | --- | --- |
-| 2 | [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107) with [Adafruit DVI Breakout](https://www.adafruit.com/product/4984) and a microSD breakout, on a breadboard or on the [PicoNES PCB](#picones-pcb) | [picosnesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitDVISD_pico2_arm.uf2) |
-| 8 | [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) (primary development and test board) | [picosnesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFruitJam_arm_piousb.uf2) |
-| 13 | [Murmulator M2](https://murmulator.ru) | [picosnesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_MurmulatorM2_arm.uf2) |
-| 14 | [Adafruit Feather RP2350 with HSTX Port](https://www.adafruit.com/product/6130) with TLV320DAC3100 I2S DAC and microSD breakout | [picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
+| 2 | [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107) with [Adafruit DVI Breakout](https://www.adafruit.com/product/4984) and a microSD breakout, on a breadboard or on the [PicoNES PCB](#picones-pcb) | [picosnesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitDVISD_pico2_arm.uf2) |
+| 8 | [Adafruit Fruit Jam](https://www.adafruit.com/product/6200) (primary development and test board) | [picosnesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFruitJam_arm_piousb.uf2) |
+| 13 | [Murmulator M2](https://murmulator.ru) | [picosnesPlus_MurmulatorM2_arm.uf2](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/picosnesPlus_MurmulatorM2_arm.uf2) |
+| 14 | [Adafruit Feather RP2350 with HSTX Port](https://www.adafruit.com/product/6130) with TLV320DAC3100 I2S DAC and microSD breakout | [picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
 
 Notes per configuration:
 
@@ -131,7 +131,7 @@ Notes per configuration:
 - **HW_CONFIG 8**: no additional hardware is required apart from a game controller. Audio is output through the monitor and the built-in speaker or headphone jack.
 - **HW_CONFIG 14**: the Feather RP2350 is sold in two variants: [with 8 MB PSRAM onboard](https://www.adafruit.com/product/6130) and [without PSRAM](https://www.adafruit.com/product/6000). On the variant without PSRAM, a PSRAM chip must be soldered onto the board separately.
 
-For wiring and assembly instructions, see the setup sections of the [pico-infonesPlus README](https://github.com/fhoedemakers/pico-infonesPlus#setup); for the PCB version of HW_CONFIG 2, see [PicoNES PCB](#picones-pcb) below. Flashing works the same for every board: hold BOOTSEL while connecting the board over USB, then copy the `.uf2` file onto the USB drive that appears.
+For wiring and assembly instructions, see the setup sections of the [pico-infonesPlus README](https://github.com/PicoPlus-devel/pico-infonesPlus#setup); for the PCB version of HW_CONFIG 2, see [PicoNES PCB](#picones-pcb) below. Flashing works the same for every board: hold BOOTSEL while connecting the board over USB, then copy the `.uf2` file onto the USB drive that appears.
 
 ***
 
@@ -143,16 +143,16 @@ A community PCB design turns the HW_CONFIG 2 breadboard build into a finished li
 | --- | --- | --- | --- | --- |
 | [PicoNES](#picones-pcb) | Pimoroni Pico Plus 2 on male headers — design **v2.6** or later only | `-c2` | `pico_nesPCB_v2.6.zip` | John Edgar Park |
 
-The archive is attached to every [release](https://github.com/fhoedemakers/pico-snesPlus/releases/latest) of this project and also lives in [`pico_shared/PCB`](https://github.com/fhoedemakers/pico_shared/tree/main/PCB). Upload the zip as-is to a PCB manufacturer of your choice; [PCBWay](https://www.pcbway.com/) and JLCPCB are both good options.
+The archive is attached to every [release](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest) of this project and also lives in [`pico_shared/PCB`](https://github.com/PicoPlus-devel/pico_shared/tree/main/PCB). Upload the zip as-is to a PCB manufacturer of your choice; [PCBWay](https://www.pcbway.com/) and JLCPCB are both good options.
 
-The other two designs from [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus), the **PicoNES Mini** and **PicoNES Micro**, are **not applicable** to this emulator: they are built around Waveshare boards without PSRAM, which pico-snesPlus requires. Their gerbers are not attached to releases of this project. Older PicoNES designs (v2.1 and earlier) are not applicable either, for the reason given below.
+The other two designs from [pico-infonesPlus](https://github.com/PicoPlus-devel/pico-infonesPlus), the **PicoNES Mini** and **PicoNES Micro**, are **not applicable** to this emulator: they are built around Waveshare boards without PSRAM, which pico-snesPlus requires. Their gerbers are not attached to releases of this project. Older PicoNES designs (v2.1 and earlier) are not applicable either, for the reason given below.
 
 > [!NOTE]
 > Sellers on AliExpress have copied the PicoNES design and sell ready-made boards. For questions about those, contact the seller.
 
 ### PicoNES PCB
 
-The design, by [@johnedgarpark](https://twitter.com/johnedgarpark), comes from [pico-infonesPlus](https://github.com/fhoedemakers/pico-infonesPlus) and kept its NES-flavoured name, but there is nothing NES-specific about it — it is DVI, microSD and controller wiring, and this emulator runs on it just as well. The current design is **v2.6**.
+The design, by [@johnedgarpark](https://twitter.com/johnedgarpark), comes from [pico-infonesPlus](https://github.com/PicoPlus-devel/pico-infonesPlus) and kept its NES-flavoured name, but there is nothing NES-specific about it — it is DVI, microSD and controller wiring, and this emulator runs on it just as well. The current design is **v2.6**.
 
 > [!IMPORTANT]
 > For this emulator the PCB only works with a [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107), and that board needs design **v2.6 or later** plus male headers. A Raspberry Pi Pico 2 or Pico 2 W has no PSRAM and cannot run pico-snesPlus at all, so an older PicoNES board built around one of those cannot be reused here — see [Mounting the board](#mounting-the-board).
@@ -203,7 +203,7 @@ Gavin Knight ([DynaMight1124](https://github.com/DynaMight1124)) designed an NES
 
 <img width="480" alt="Top cover with a button for BOOTSEL" src="https://github.com/user-attachments/assets/3c8f8990-51b9-4873-9054-64bb2cd6c300" />
 
-For the full photo gallery and assembly detail, see the [PCB section of the pico-infonesPlus documentation](https://github.com/fhoedemakers/pico-infonesPlus#pcb-with-raspberry-pi-pico-or-pico-2-and-pimoroni-pico-plus-2).
+For the full photo gallery and assembly detail, see the [PCB section of the pico-infonesPlus documentation](https://github.com/PicoPlus-devel/pico-infonesPlus#pcb-with-raspberry-pi-pico-or-pico-2-and-pimoroni-pico-plus-2).
 
 ***
 
@@ -216,6 +216,26 @@ For the full photo gallery and assembly detail, see the [PCB section of the pico
 4. Select a game in the on-screen menu to start it.
 
 In-game battery saves are written to the SD card under `/SAVES/SNES/` (created automatically) when you quit a game to the ROM menu, so quit to the menu before powering off. There are no save states; see [Status and limitations](#status-and-limitations).
+
+Games can also be added or removed later without taking the card out of the board; see [USB drive mode](#usb-drive-mode).
+
+***
+
+## USB drive mode
+
+The SD card can be handed to a computer as an ordinary USB mass storage device, so games can be added or removed without moving the card to a card reader.
+
+Press **Select** in the ROM browser to open the settings menu, select **USB drive mode**, and connect the board's USB port to a computer. The emulator unmounts the card and it appears on the computer as a removable drive. Copy or delete files, then eject the drive on the computer: the emulator remounts the card and returns to the ROM browser, re-reading the current directory so that added or removed games are listed immediately.
+
+**B** also leaves the screen. If no computer has claimed the drive within twenty seconds, it closes by itself.
+
+Points to note:
+
+- The entry is present only when the settings menu is opened from the ROM browser.
+- Eject the drive on the computer before leaving the screen, as with any removable drive.
+- Gamepads on the GPIO controller ports, and USB controllers on boards that have a second USB port for them, keep working while the card is mounted.
+- A board with only one USB port needs that port for the computer, and is powered through it, so a USB controller cannot be attached at the same time and the cables cannot be exchanged while the emulator is running. Connect the board to the computer first and open the screen with a gamepad on a GPIO controller port. 
+- The card must be readable when the screen is opened. A missing or unreadable card is reported instead.
 
 ***
 
@@ -241,7 +261,7 @@ The settings menu contains a controller test screen that shows which button the 
 
 In the menu itself, a SNES pad on the GPIO port is read by label like a USB or Wii Classic pad: **A** chooses, **B** goes back and **X** opens the [recently played list](#recently-played-games). A NES pad keeps the NES order.
 
-See the [pico-infonesPlus README](https://github.com/fhoedemakers/pico-infonesPlus#gamecontroller-support) for general controller notes and troubleshooting.
+See the [pico-infonesPlus README](https://github.com/PicoPlus-devel/pico-infonesPlus#gamecontroller-support) for general controller notes and troubleshooting.
 
 ### SNES Mouse (USB mouse)
 
@@ -259,7 +279,7 @@ How it works, and what to expect:
 
 The emulator can display box art and a short text description for each ROM when a metadata pack is present on the SD card. With the pack installed, pressing **START** on a ROM in the file browser displays its metadata; the screensaver also shows random box art.
 
-A metadata pack can be downloaded from the [releases page](https://github.com/fhoedemakers/pico-snesPlus/releases) and extracted to the root of the SD card. It is installed under:
+A metadata pack can be downloaded from the [releases page](https://github.com/PicoPlus-devel/pico-snesPlus/releases) and extracted to the root of the SD card. It is installed under:
 
 ```
 /metadata/SNES/
@@ -288,6 +308,8 @@ In game:
 
 - **Select + Start** opens the settings menu. From there you can quit to the ROM menu (which writes the cartridge's battery save to the SD card), reset the game, or change settings: screen mode (8:7 or 1:1, with or without scanlines), frame rate display, audio on/off, frame skip, rapid-fire on A/B, font colors, the controller test screen, and board-specific options such as speaker volume and the NeoPixel VU meter on the Fruit Jam. Settings are remembered across restarts.
 
+Two entries are offered only when the settings menu is opened from the ROM browser, not from a running game: the [recently played list](#recently-played-games) and [USB drive mode](#usb-drive-mode).
+
 ***
 
 ## Recently played games
@@ -308,7 +330,7 @@ In the list:
 
 Games are added to the list automatically when you start them, so nothing has to be enabled. Starting a game that is already in the list moves it back to the top. The list closes by itself after a minute without input.
 
-The list is kept in **`/recent_SNES.txt`** in the root of the SD card, as plain text with one game per line. It survives a reboot and can be read, edited or deleted on a PC. Deleting the file simply empties the list, and a damaged file is treated as an empty list — unlike the settings file, nothing else is reset. Each emulator running under [pico-bootLoader](https://github.com/fhoedemakers/pico-bootLoader) keeps its own list.
+The list is kept in **`/recent_SNES.txt`** in the root of the SD card, as plain text with one game per line. It survives a reboot and can be read, edited or deleted on a PC. Deleting the file simply empties the list, and a damaged file is treated as an empty list — unlike the settings file, nothing else is reset. Each emulator running under [pico-bootLoader](https://github.com/PicoPlus-devel/pico-bootLoader) keeps its own list.
 
 If a game was moved, renamed or deleted on the SD card in the meantime, the list reports it as missing instead of starting it. Use **Select** to remove such an entry.
 
@@ -324,7 +346,7 @@ Build on Linux (a Raspberry Pi also works) or on Windows under WSL, with the [Pi
 Then:
 
 ```bash
-git clone https://github.com/fhoedemakers/pico-snesPlus.git
+git clone https://github.com/PicoPlus-devel/pico-snesPlus.git
 cd pico-snesPlus
 git submodule update --init --recursive
 ./bld.sh -c2 -2    # HW_CONFIG 2:  Pimoroni Pico Plus 2 breadboard
@@ -344,7 +366,7 @@ The bundled snes9x core also compiles natively on Linux. [tools/host-harness](to
 ## Acknowledgements
 
 - The [Snes9x](https://github.com/snes9xgit/snes9x) authors, and the maintainers of the ndssfc/CATSFC line of C ports on which the bundled core is based.
-- The menu, HDMI driver, PSRAM allocator, and controller code in [pico_shared](https://github.com/fhoedemakers/pico_shared) are shared with the sister projects listed at the top of this README.
+- The menu, HDMI driver, PSRAM allocator, and controller code in [pico_shared](https://github.com/PicoPlus-devel/pico_shared) are shared with the sister projects listed at the top of this README.
 - Metadata, M2 testing and the 3D-printed case for the PicoNES PCB by [DynaMight1124](https://github.com/DynaMight1124)
 - The [PicoNES PCB](#picones-pcb) was designed by **John Edgar Park** ([@johnedgarpark](https://twitter.com/johnedgarpark)).
 
