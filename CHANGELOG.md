@@ -1,12 +1,12 @@
 # CHANGELOG
 
-**v0.5** fixes the **SA-1**, the extra chip inside Super Mario RPG, Kirby Super Star and Kirby's Dream Land 3. Super Mario RPG no longer freezes during battles. Nothing else changed.
+**v0.5** adds **USB drive mode**: plug the board into a computer and the SD card shows up as a USB drive, so games can be added without taking the card out. It also fixes the **SA-1** chip, so Super Mario RPG no longer freezes during battles, and the **504 MHz overclock**, which had been quietly doing nothing since v0.4.
 
 # General Info
 
 [Binaries for each configuration are at the end of this page](#downloads___).
 
-[See the Supported hardware and SD card setup sections in the README for how to install and wire up your board.](https://github.com/fhoedemakers/pico-snesPlus#supported-hardware)
+[See the Supported hardware and SD card setup sections in the README for how to install and wire up your board.](https://github.com/PicoPlus-devel/pico-snesPlus#supported-hardware)
 
 > [!IMPORTANT]
 > An **RP2350** board with **8 MB PSRAM** is required. The original RP2040 (Pico 1), and RP2350 boards without PSRAM, are not supported.
@@ -18,7 +18,20 @@
 
 # v0.5
 
-A small release with one real fix: **SA-1 timing**. Everything listed under [v0.4](#v04) and earlier still applies. The menu and support code (`pico_shared`) are unchanged, so upgrading is only a matter of flashing the new `.uf2` — your settings, saves and save states on the SD card are untouched.
+One new feature and two fixes: games can now be copied to the SD card over USB, **SA-1 timing** is corrected, and the **504 MHz overclock** applies again. The shared menu and support code (`pico_shared`) is updated as well. Everything listed under [v0.4](#v04) and earlier still applies, and upgrading is only a matter of flashing the new `.uf2` — your settings, saves and save states on the SD card are untouched.
+
+## Copy games over USB
+
+Adding a game used to mean powering the board down, digging the microSD card out, finding a card reader and putting it all back. **USB drive mode** removes that: it hands the card to a computer as an ordinary USB drive while the board stays where it is.
+
+Press **Select** in the ROM browser, choose **USB drive mode**, and connect the board's USB port to a computer. The card appears as a removable drive. Copy or delete files, then eject the drive on the computer; the emulator returns to the ROM browser with the new list of games already read in. **B** leaves the screen too, and if no computer turns up within twenty seconds it closes by itself.
+
+Worth knowing:
+
+- It is offered in the ROM browser only.
+- Eject the drive on the computer before leaving, as with any USB stick.
+- Controllers on a GPIO port, or on a second USB port, keep working while the card is mounted.
+- A board with only one USB port needs it for the computer, which powers the board through it, so use a gamepad on the GPIO port there. 
 
 ## SA-1 games
 
@@ -26,13 +39,23 @@ A few cartridges carry a second, faster processor of their own: the SA-1, used b
 
 The timing is now right. Super Mario RPG plays through its battles, and the other games with this chip benefit from the same fix. Games run just as fast as before.
 
-This fix was contributed by [Amy (@zZmiz)](https://github.com/zZmiz) in [pull request #4](https://github.com/fhoedemakers/pico-snesPlus/pull/4) — thank you.
+This fix was contributed by [Amy (@zZmiz)](https://github.com/zZmiz) in [pull request #4](https://github.com/PicoPlus-devel/pico-snesPlus/pull/4) — thank you.
+
+## Fixes
+
+- **The 504 MHz overclock applies again.** Switching it on in the settings menu rebooted the board as it should, but the board came back at the usual 378 MHz and the setting looked as though it had been ignored. Broken since v0.4. The advice in the warning at the top of this page has not changed, though: leave it off.
+- **PSRAM is recognised reliably at start-up.** The check that identifies the PSRAM chip could pick up a stale byte and not recognise it, and a board that reports no PSRAM refuses to start, since this emulator cannot run without it.
 
 ## An easier SNES-to-NES adapter cable
 
 The GPIO controller ports on the PicoNES PCB and on a breadboard build use NES connectors but speak the SNES protocol, so plugging in a real SNES pad needs a small adapter cable. Making one used to start with cutting the connector off a controller or an extension cable.
 
-There is now a less destructive route: buy a bare 7-pin SNES connector (the **180 degree** version) and 3D print a cap for it. The model is in this repository as [assets/SNES Controller Port Cap.stl](https://github.com/fhoedemakers/pico-snesPlus/blob/main/assets/SNES%20Controller%20Port%20Cap.stl), designed by [Gavin Knight (@DynaMight1124)](https://github.com/DynaMight1124) — thank you. See [snestonescontroller.md](https://github.com/fhoedemakers/pico-snesPlus/blob/main/snestonescontroller.md) for the wiring and the rest of the build.
+There is now a less destructive route: buy a bare 7-pin SNES connector (the **180 degree** version) and 3D print a cap for it. The model is in this repository as [assets/SNES Controller Port Cap.stl](https://github.com/PicoPlus-devel/pico-snesPlus/blob/main/assets/SNES%20Controller%20Port%20Cap.stl), designed by [Gavin Knight (@DynaMight1124)](https://github.com/DynaMight1124) — thank you. See [snestonescontroller.md](https://github.com/PicoPlus-devel/pico-snesPlus/blob/main/snestonescontroller.md) for the wiring and the rest of the build.
+
+## Other changes
+
+- **The bottom of the settings menu has a fixed order**: Controller test, Enter BOOTSEL mode and USB drive mode, in that order, after the settings themselves.
+- **The project has moved to the [PicoPlus-devel](https://github.com/PicoPlus-devel) organisation**, along with the sister emulators and the shared code. Nothing needs to be done about it: existing links, clones and bookmarks keep working, as GitHub forwards them to the new address.
 
 # v0.4
 
@@ -53,17 +76,17 @@ The menu keeps a list of the last 20 games started, most recent first. It is ope
 
 In the list, **A** starts the highlighted game, **Select** removes an entry after a confirmation, **Start** shows its metadata and box art, and **B** closes the list. Entries are added automatically when a game is started; starting a game already in the list moves it to the top. The list closes after a minute without input.
 
-The list is stored as plain text in `/recent_SNES.txt` in the root of the SD card, one game per line. It survives a reboot and can be read, edited or deleted on a PC. A missing or damaged file is treated as an empty list; no other settings are affected. Each emulator running under [pico-bootLoader](https://github.com/fhoedemakers/pico-bootLoader) keeps its own list. An entry whose ROM is no longer on the card is reported as missing instead of started, and can be removed with Select.
+The list is stored as plain text in `/recent_SNES.txt` in the root of the SD card, one game per line. It survives a reboot and can be read, edited or deleted on a PC. A missing or damaged file is treated as an empty list; no other settings are affected. Each emulator running under [pico-bootLoader](https://github.com/PicoPlus-devel/pico-bootLoader) keeps its own list. An entry whose ROM is no longer on the card is reported as missing instead of started, and can be removed with Select.
 
-See [Recently played games](https://github.com/fhoedemakers/pico-snesPlus#recently-played-games) in the README.
+See [Recently played games](https://github.com/PicoPlus-devel/pico-snesPlus#recently-played-games) in the README.
 
 ## Overclocking
 
-The 504 MHz overclock option is now documented as not advised; see the warning above and the [Overclocking section](https://github.com/fhoedemakers/pico-snesPlus#overclocking) in the README. The default clock of 378 MHz is unchanged.
+The 504 MHz overclock option is now documented as not advised; see the warning above and the [Overclocking section](https://github.com/PicoPlus-devel/pico-snesPlus#overclocking) in the README. The default clock of 378 MHz is unchanged.
 
 ## The PicoNES PCB
 
-Unchanged since [v0.2](#v02): design **v2.6** is required, and the gerber archive `pico_nesPCB_v2.6.zip` is attached to this release as before. The README chapter describing it is now called [Custom PCB](https://github.com/fhoedemakers/pico-snesPlus#custom-pcb) and lists the applicable design in a table; the PicoNES Mini and PicoNES Micro remain not applicable to this emulator, since they are built around Waveshare boards without PSRAM.
+Unchanged since [v0.2](#v02): design **v2.6** is required, and the gerber archive `pico_nesPCB_v2.6.zip` is attached to this release as before. The README chapter describing it is now called [Custom PCB](https://github.com/PicoPlus-devel/pico-snesPlus#custom-pcb) and lists the applicable design in a table; the PicoNES Mini and PicoNES Micro remain not applicable to this emulator, since they are built around Waveshare boards without PSRAM.
 
 ## Other changes
 
@@ -99,27 +122,27 @@ Worth knowing:
 - **ROMs without a pack are unaffected** — nothing extra is loaded and the card is not touched.
 - MSU-1 packs are large, often several GB, so plan card space accordingly.
 
-See the [MSU-1 section in the README](https://github.com/fhoedemakers/pico-snesPlus#msu-1) for the details.
+See the [MSU-1 section in the README](https://github.com/PicoPlus-devel/pico-snesPlus#msu-1) for the details.
 
 ## Starting from the bootloader
 
-pico-snesPlus can now be launched from [pico-bootLoader](https://github.com/fhoedemakers/pico-bootLoader), a boot menu for RP2350 boards that keeps several emulators (and a Doom port) on one SD card. At power-on you pick one from an on-screen menu; the bootloader flashes it and starts it, and a reset or power cycle always returns to the menu — no reconnecting the board to a PC to switch systems. From inside the emulator, Select + Start → *Return to emulator selection* goes back.
+pico-snesPlus can now be launched from [pico-bootLoader](https://github.com/PicoPlus-devel/pico-bootLoader), a boot menu for RP2350 boards that keeps several emulators (and a Doom port) on one SD card. At power-on you pick one from an on-screen menu; the bootloader flashes it and starts it, and a reset or power cycle always returns to the menu — no reconnecting the board to a PC to switch systems. From inside the emulator, Select + Start → *Return to emulator selection* goes back.
 
 The bootloader ships its own copy of this emulator in the SD-card archive on its releases page, so nothing here needs to be downloaded for that. If you do not use the bootloader, nothing changes: flash the `.uf2` for your board as before.
 
 ## The PicoNES PCB
 
-The README has a [PicoNES PCB](https://github.com/fhoedemakers/pico-snesPlus#picones-pcb) chapter covering the community PCB design that turns the HW_CONFIG 2 breadboard build into a finished little console: the parts it needs, how the board is mounted, which binary to flash and the matching 3D-printed case. The gerber archive `pico_nesPCB_v2.6.zip` is attached to this release.
+The README has a [PicoNES PCB](https://github.com/PicoPlus-devel/pico-snesPlus#picones-pcb) chapter covering the community PCB design that turns the HW_CONFIG 2 breadboard build into a finished little console: the parts it needs, how the board is mounted, which binary to flash and the matching 3D-printed case. The gerber archive `pico_nesPCB_v2.6.zip` is attached to this release.
 
 **PCB design v2.6 is what makes this work.** The design gained through-holes, so a [Pimoroni Pico Plus 2](https://shop.pimoroni.com/products/pimoroni-pico-plus-2?variant=42092668289107) fitted with male headers can be plugged in instead of soldering a board flat. That matters more here than in the sister projects: this emulator needs PSRAM, so the Pimoroni Pico Plus 2 is the only board on that PCB that can run it at all. On v2.1 and older designs the board has to lie flat, which the SP/CE connector on its back prevents — an older PicoNES board built around a Pico 2 cannot be reused for pico-snesPlus. That is why **v2.1 is no longer offered here**: it is not suitable for this emulator. No separate binary is needed: flash the same `picosnesPlus_AdafruitDVISD_pico2_arm.uf2` as the breadboard build. When the board is mounted on headers, print the **latest** top cover from Thingiverse; the older ones assume a board soldered flat and leave no room for the USB cable.
 
 The two smaller designs from pico-infonesPlus, the PicoNES Mini and PicoNES Micro, are **not** usable with this emulator either — they are built around Waveshare boards without PSRAM — so their gerbers are not attached.
 
-The GPIO controller ports on the PCB (and on a breadboard build) use NES connectors but speak the SNES protocol and clock all 16 bits, so a real SNES pad maps 1:1. [snestonescontroller.md](https://github.com/fhoedemakers/pico-snesPlus/blob/main/snestonescontroller.md) describes the SNES-to-NES adapter cable you need to make for it.
+The GPIO controller ports on the PCB (and on a breadboard build) use NES connectors but speak the SNES protocol and clock all 16 bits, so a real SNES pad maps 1:1. [snestonescontroller.md](https://github.com/PicoPlus-devel/pico-snesPlus/blob/main/snestonescontroller.md) describes the SNES-to-NES adapter cable you need to make for it.
 
 ## Other changes
 
-- **The README opens with the list of hardware configurations it runs on**, so you no longer have to scroll to find out whether your board is supported. Each entry links to [Supported hardware](https://github.com/fhoedemakers/pico-snesPlus#supported-hardware) for the binary, and to the PCB design where one applies.
+- **The README opens with the list of hardware configurations it runs on**, so you no longer have to scroll to find out whether your board is supported. Each entry links to [Supported hardware](https://github.com/PicoPlus-devel/pico-snesPlus#supported-hardware) for the binary, and to the PCB design where one applies.
 - The PCB design files moved to the shared `pico_shared` repository, and the stale `PCB/` copy was removed from this one — it still advertised a gerber it did not contain.
 - Fixed object file extension handling in the CMake configuration.
 - MSU-1 support was developed with the help of [Anthropic Claude](https://www.anthropic.com/claude), like the rest of the port.
@@ -173,7 +196,7 @@ Star Ocean, Street Fighter Alpha 2 (S-DD1) and Far East of Eden Zero (SPC7110) u
 - USB controllers, including Xbox / XInput (and 8BitDo in X-mode), Sony DualShock 4 / DualSense, the AliExpress SNES USB pad, PlayStation Classic, and USB keyboards.
 - Directly wired NES / SNES gamepads, and the Wii Classic / SNES-Classic-mini pad over I²C.
 - Two-player play with a second USB controller.
-- **SNES Mouse**: plug in any USB mouse and it becomes a SNES Mouse in controller port 1 — Mario Paint is fully playable, no configuration needed. While the mouse is connected it takes the place of player 1's pad, just like the real peripheral; unplug it and the pad is player 1 again. See the [README](https://github.com/fhoedemakers/pico-snesPlus#snes-mouse-usb-mouse) for details.
+- **SNES Mouse**: plug in any USB mouse and it becomes a SNES Mouse in controller port 1 — Mario Paint is fully playable, no configuration needed. While the mouse is connected it takes the place of player 1's pad, just like the real peripheral; unplug it and the pad is player 1 again. See the [README](https://github.com/PicoPlus-devel/pico-snesPlus#snes-mouse-usb-mouse) for details.
 - A controller test screen in the settings menu shows which button the emulator receives for each press.
 
 **Overclocking**
@@ -197,19 +220,19 @@ The port of the Snes9x core to the RP2350, the coprocessor work (Super FX, DSP, 
 <a name="downloads___"></a>
 ## Downloads by configuration
 
-Only the four RP2350 + PSRAM configurations below are supported. For board-by-board wiring and which UF2 file to flash, see the [Supported hardware section in the README](https://github.com/fhoedemakers/pico-snesPlus#supported-hardware).
+Only the four RP2350 + PSRAM configurations below are supported. For board-by-board wiring and which UF2 file to flash, see the [Supported hardware section in the README](https://github.com/PicoPlus-devel/pico-snesPlus#supported-hardware).
 
 | HW_CONFIG | Board | Binary |
 |:--|:--|:--|
-| 2 | Pimoroni Pico Plus 2, on a breadboard or on the PicoNES PCB | [picosnesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitDVISD_pico2_arm.uf2) |
-| 8 | Adafruit Fruit Jam | [picosnesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFruitJam_arm_piousb.uf2) |
-| 13 | Murmulator M2 | [picosnesPlus_MurmulatorM2_arm.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_MurmulatorM2_arm.uf2)  |
-| 14 | Adafruit Feather RP2350 with TLV320DAC3100 | [picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
+| 2 | Pimoroni Pico Plus 2, on a breadboard or on the PicoNES PCB | [picosnesPlus_AdafruitDVISD_pico2_arm.uf2](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitDVISD_pico2_arm.uf2) |
+| 8 | Adafruit Fruit Jam | [picosnesPlus_AdafruitFruitJam_arm_piousb.uf2](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFruitJam_arm_piousb.uf2) |
+| 13 | Murmulator M2 | [picosnesPlus_MurmulatorM2_arm.uf2](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/picosnesPlus_MurmulatorM2_arm.uf2)  |
+| 14 | Adafruit Feather RP2350 with TLV320DAC3100 | [picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/picosnesPlus_AdafruitFeatherRP2350_TLV320DAC3100_arm_piousb.uf2) |
 
 ## Other downloads
 
-- Metadata: [SNESMetadata.zip](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/SNESMetadata.zip)
-- PicoNES PCB gerbers: [pico_nesPCB_v2.6.zip](https://github.com/fhoedemakers/pico-snesPlus/releases/latest/download/pico_nesPCB_v2.6.zip) — upload as-is to a PCB manufacturer. See [PicoNES PCB](https://github.com/fhoedemakers/pico-snesPlus#picones-pcb) in the README.
+- Metadata: [SNESMetadata.zip](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/SNESMetadata.zip)
+- PicoNES PCB gerbers: [pico_nesPCB_v2.6.zip](https://github.com/PicoPlus-devel/pico-snesPlus/releases/latest/download/pico_nesPCB_v2.6.zip) — upload as-is to a PCB manufacturer. See [PicoNES PCB](https://github.com/PicoPlus-devel/pico-snesPlus#picones-pcb) in the README.
 
 Extract the zip file to the root folder of the SD card. Select a game in the menu and press START to show more information and box art. Works for most official released games. The screensaver shows floating random cover art.
 
