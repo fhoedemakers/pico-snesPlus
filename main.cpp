@@ -710,31 +710,53 @@ static bool snes9x_load_rom_from_psram(uintptr_t psram_ptr, size_t romsize)
 }
 
 /* -------------------------------------------------------------------------
- * On-screen FPS overlay. Stamps the two-digit g_fps value into the top-left
- * of the freshly-rendered SNES frame (RGB555) after S9xMainLoop returns.
+ * On-screen FPS overlay. Stamps "NN RN FN" into the top-left of the freshly-
+ * rendered SNES frame (RGB555) after S9xMainLoop returns:
+ *   NN  frames emulated in the last ~1 s window (g_fps, 60 = full speed)
+ *   RN  HSTX video resyncs since boot (cumulative — they should stay rare)
+ *   FN  the frameskip in effect: frames skipped after each rendered one
  * RENDER_TO_FB: target is the anchored framebuffer window (stride 320);
  * legacy: g_snes_private_screen (stride SNES_WIDTH) just before the blit,
  * so it rides along with it (incl. the core1 offload path) at no extra
- * sync cost. 8x8 font, white-on-black, cols 4..19 / overlay rows 0..7.
+ * sync cost. 8x8 font, white-on-black, from col 4 / overlay rows 0..7.
  *
  * Draws overlay font rows [font_first, font_last] into destination rows
  * [font_first - phys_base .. font_last - phys_base]. Full-overlay callers pass
  * (0, 7, 0); the strip hook passes a sub-range so it can stamp only the rows a
  * given copy-out chunk publishes (see fps_overlay_strip_hook). */
 #define FPS_OVERLAY_ROWS 8   /* must match the font_last+1 used below */
+#define FPS_OVERLAY_COL  4   /* left margin, pixels */
+
+/* Frames skipped after each rendered frame; 0 = render every frame. The
+ * 256x224 blit + the snes9x renderer (RenderScreen/RenderLine/Draw*) is the
+ * single biggest non-CPU cost. Super FX and SA-1 games lean hardest on it, so
+ * they render 1 frame of every 3 (skip 2); all other games render every other
+ * frame (skip 1). Drives both the skip reload in run_emulator() and the F
+ * field of the overlay. */
+static inline int frameskip_count(void)
+{
+    return settings.flags.frameSkip ? ((Settings.SuperFX || Settings.SA1) ? 2 : 1) : 0;
+}
+
+/* The overlay text, rebuilt once per second by the window in run_emulator().
+ * The draw below runs per rendered frame (per copy-out chunk, even), so it
+ * stays a plain glyph blit — no formatting in the hot path. Written and read
+ * on core0 only, so no locking. */
+static char g_fps_text[24] = "60 R0 F0";
+
 static void draw_fps_overlay(uint16_t *screen, int stride,
                              int font_first, int font_last, int phys_base)
 {
     const uint16_t fg = 0x7FFF;  /* white, RGB555 */
     const uint16_t bg = 0x0000;  /* black         */
-    char d0 = (char)('0' + (g_fps / 10) % 10);
-    char d1 = (char)('0' + (g_fps % 10));
+    int maxchars = (stride - FPS_OVERLAY_COL) / FONT_CHAR_WIDTH;
+    if (maxchars > (int)sizeof(g_fps_text) - 1) maxchars = (int)sizeof(g_fps_text) - 1;
     for (int row = font_first; row <= font_last; row++) {
-        uint16_t *dst = screen + (row - phys_base) * stride + 4;
-        char s0 = getcharslicefrom8x8font(d0, row);  /* LSB = leftmost pixel */
-        char s1 = getcharslicefrom8x8font(d1, row);
-        for (int b = 0; b < 8; b++) { *dst++ = (s0 & 1) ? fg : bg; s0 >>= 1; }
-        for (int b = 0; b < 8; b++) { *dst++ = (s1 & 1) ? fg : bg; s1 >>= 1; }
+        uint16_t *dst = screen + (row - phys_base) * stride + FPS_OVERLAY_COL;
+        for (int i = 0; i < maxchars && g_fps_text[i]; i++) {
+            char sl = getcharslicefrom8x8font(g_fps_text[i], row); /* LSB = leftmost pixel */
+            for (int b = 0; b < 8; b++) { *dst++ = (sl & 1) ? fg : bg; sl >>= 1; }
+        }
     }
 }
 
@@ -1024,12 +1046,8 @@ static void run_emulator(void)
 #endif
 
         if (skipFrames == 0) {
-            /* frameSkip=true → skip frames to buy back frame budget. The
-             * 256x224 blit + the snes9x renderer (RenderScreen/RenderLine/
-             * Draw*) is the single biggest non-CPU cost. Super FX games
-             * lean hardest on it, so they render 1 frame of every 3
-             * (skip 2); all other games render every other frame (skip 1). */
-            skipFrames = settings.flags.frameSkip ? (Settings.SuperFX ? 2 : 1) : 0;
+            /* frameSkip=true → skip frames to buy back frame budget. */
+            skipFrames = (uint8_t)frameskip_count();
         } else {
             skipFrames--;
         }
@@ -1102,6 +1120,18 @@ static void run_emulator(void)
         else if (now - fps_t0_us >= 1000000) {
             uint32_t delta = frame - fps_f0;
             g_fps = delta;
+            /* Overlay line: fps, cumulative video resyncs, frameskip in
+             * effect. Resyncs are a since-boot total on purpose — they are
+             * rare, and a per-second value would blink past unnoticed. */
+            {
+                int resyncs = 0;
+#if HSTX
+                resyncs = get_video_output_resync_count();
+#endif
+                snprintf(g_fps_text, sizeof(g_fps_text), "%02lu R%d F%d",
+                         (unsigned long)(delta > 99 ? 99 : delta), resyncs,
+                         frameskip_count());
+            }
 #if PROFILE_BUCKETS
             uint32_t d  = delta ? delta : 1;
             uint32_t dr = prof_frames_r ? prof_frames_r : 1;
